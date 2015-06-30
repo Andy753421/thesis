@@ -1,0 +1,9 @@
+# Common files
+*~
+*.swp
+
+# Andoird Host files
+host/android/config.mk
+host/android/bin/
+host/android/gen/
+host/android/obj/
