@@ -2,42 +2,27 @@ package org.pileus.thesis;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Color;
-import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Messenger;
 import android.preference.PreferenceManager;
-import android.text.Spannable;
-import android.text.SpannableString;
-import android.text.format.DateFormat;
-import android.text.style.BackgroundColorSpan;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.StrikethroughSpan;
-import android.text.style.StyleSpan;
-import android.text.style.UnderlineSpan;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TabHost;
-import android.widget.TabWidget;
-import android.widget.TextView;
+import android.webkit.WebView;
 import android.widget.Toast;
 
 public class Main extends Activity
 {
 	/* Private data */
-	private Handler      handler;
-	private Messenger    messenger;
-	private Task         task;
-	private Toast        toast;
-	private boolean      running;
+	private Handler    handler;
+	private Messenger  messenger;
+	private Task       task;
+	private Toast      toast;
+	private boolean    running;
+	private WebView    webview;
 
 	/* Private helper methods */
 	private void update(boolean running)
@@ -111,8 +96,13 @@ public class Main extends Activity
 			// Setup preferences
 			PreferenceManager.setDefaultValues(this, R.xml.prefs, false);
 
-			// Setup main layout
-			this.setContentView(R.layout.main);
+			// Setup Web View
+			this.webview   = new WebView(this);
+			this.setContentView(this.webview);
+
+			// Load webpage
+			this.webview.getSettings().setJavaScriptEnabled(true);
+			this.webview.loadUrl("file:///android_asset/index.html");
 
 			// Setup toast
 			this.toast     = Toast.makeText(this, "", Toast.LENGTH_SHORT);

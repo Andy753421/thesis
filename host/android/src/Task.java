@@ -1,18 +1,9 @@
 package org.pileus.thesis;
 
-import java.util.List;
-import java.util.LinkedList;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
-import android.app.Notification;
-import android.app.PendingIntent;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.IBinder;
-import android.os.Looper;
 import android.os.Messenger;
 import android.preference.PreferenceManager;
 import android.util.Log;
@@ -30,7 +21,6 @@ public class Task extends Service
 	private SharedPreferences prefs;
 	private Messenger         messenger;
 	private Thread            thread;
-	private Lock              lock;
 
 	/* Private methods */
 	private void handle(int cmd, Messenger mgr)

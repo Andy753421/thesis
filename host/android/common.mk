@@ -10,6 +10,7 @@ TOOLS   ?= /opt/android-sdk-update-manager/build-tools/20.0.0
 PATH    := $(PATH):$(TOOLS)
 DIR     := $(subst .,/,$(PACKAGE))
 RES     := $(wildcard res/*/*.*)
+AST     := $(wildcard assets/*.*)
 SRC     := $(wildcard src/*.java src/$(DIR)/*.java)
 GEN     := gen/$(DIR)/R.java
 OBJ     := obj/$(DIR)/R.class
@@ -74,12 +75,13 @@ run-avd:
 	@echo "DEX    $@"
 	@dx --dex --output $@ obj
 
-%.res: AndroidManifest.xml $(RES) | bin
+%.res: AndroidManifest.xml $(RES) $(AST) | bin
 	@echo "RES    $@"
 	@aapt package -f -m               \
 		-I $(ANDROID)             \
 		-M AndroidManifest.xml    \
 		-S res                    \
+		-A assets                 \
 		-F $*.res
 
 $(OBJ): $(SRC) $(GEN) makefile | obj
