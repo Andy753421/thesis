@@ -17,6 +17,7 @@ import android.widget.Toast;
 public class Main extends Activity
 {
 	/* Private data */
+	private Socket     socket;
 	private Handler    handler;
 	private Messenger  messenger;
 	private Task       task;
@@ -96,13 +97,19 @@ public class Main extends Activity
 			// Setup preferences
 			PreferenceManager.setDefaultValues(this, R.xml.prefs, false);
 
+			// Create socket
+			this.socket    = new Socket();
+
 			// Setup Web View
 			this.webview   = new WebView(this);
-			this.setContentView(this.webview);
-
-			// Load webpage
+			this.webview.setWebChromeClient(this.socket);
+			this.webview.addJavascriptInterface(this.socket, "android");
 			this.webview.getSettings().setJavaScriptEnabled(true);
-			this.webview.loadUrl("file:///android_asset/index.html");
+			this.webview.loadUrl("file:///android_asset/index.htm");
+
+
+			// Add window
+			this.setContentView(this.webview);
 
 			// Setup toast
 			this.toast     = Toast.makeText(this, "", Toast.LENGTH_SHORT);

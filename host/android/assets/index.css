@@ -1,0 +1,13 @@
+#control {
+	position:   absolute;
+	margin:     10px;
+	bottom:     10px;
+	z-index:    20;
+}
+#window {
+	position:   absolute;
+	top:        0px;
+	left:       0px;
+	right:      0px;
+	bottom:     0px;
+}

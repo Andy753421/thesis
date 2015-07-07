@@ -1,7 +1,52 @@
+<!DOCTYPE html5>
 <html>
-	<body>
-		<h1>
-			Hello
-		</h1>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+		<link rel="stylesheet" type="text/css" href="index.css" />
+		<script src="window.js"></script>
+		<script src="sock.js"></script>
+		<script src="webhost.js"></script>
+		<script>
+			function debug(msg) {
+				var con = document.getElementById('console')
+				var lst = con.getElementsByClassName('scroll')[0]
+				var box = document.createElement('div')
+				box.innerHTML = msg
+				lst.appendChild(box)
+				con.scrollTop = con.scrollHeight;
+			}
+			function load(name, code, run, to) {
+				broadcast({
+					'dst': to  ? to : undefined,
+					'command': run ? 'run' : 'add',
+					'webapp': {
+						'name':    name,
+						'code':    code.toString(),
+						'title':   name,
+					},
+				})
+			}
+			function send() {
+				load('Simulator', Simulator, false)
+				load('Player',    Player,    false)
+			}
+			function init() {
+				connect(); // connect UDP sock
+
+				var elem = document.getElementById('window')
+				var host = new WebHost(elem)
+			}
+		</script>
+	</head>
+	<body onload="init()">
+		<div id="control">
+			<input type="button" value="Send Event" onclick="send()" />
+		</div>
+		<div id="window">
+		</div>
+		<div id="console">
+			<div class="title">Console</div>
+			<pre class="scroll"></pre>
+		</div>
 	</body>
 </html>
