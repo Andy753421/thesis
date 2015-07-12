@@ -3,9 +3,10 @@
 	<head>
 		<meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
 		<link rel="stylesheet" type="text/css" href="index.css" />
-		<script src="window.js"></script>
 		<script src="sock.js"></script>
 		<script src="webhost.js"></script>
+		<script src="player.js"></script>
+		<script src="virtual.js"></script>
 		<script>
 			function debug(msg) {
 				var con = document.getElementById('console')
@@ -26,22 +27,15 @@
 					},
 				})
 			}
-			function send() {
-				load('Simulator', Simulator, false)
-				load('Player',    Player,    false)
-			}
 			function init() {
-				connect(); // connect UDP sock
-
 				var elem = document.getElementById('window')
 				var host = new WebHost(elem)
+
+				load('Player', Player, false)
 			}
 		</script>
 	</head>
 	<body onload="init()">
-		<div id="control">
-			<input type="button" value="Send Event" onclick="send()" />
-		</div>
 		<div id="window">
 		</div>
 		<div id="console">
