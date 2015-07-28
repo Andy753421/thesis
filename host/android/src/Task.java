@@ -27,22 +27,22 @@ public class Task extends Service
 	{
 		// Validate messenger
 		if (cmd != REGISTER && mgr != null && mgr != this.messenger) {
-			Log.d("Thesis", "Task: handle - invalid messenger");
+			Main.debug("Task: handle - invalid messenger");
 		}
 
 		// Setup communication with Main
 		if (cmd == REGISTER) {
-			Log.d("Thesis", "Task: handle - register");
+			Main.debug("Task: handle - register");
 		}
 
 		// Create client thread
 		if (cmd == CONNECT && this.thread == null) {
-			Log.d("Thesis", "Task: handle - connect");
+			Main.debug("Task: handle - connect");
 		}
 
 		// Stop client thread
 		if (cmd == DISCONNECT && this.thread != null) {
-			Log.d("Thesis", "Task: handle - register");
+			Main.debug("Task: handle - register");
 		}
 	}
 
@@ -56,7 +56,7 @@ public class Task extends Service
 	@Override
 	public void onCreate()
 	{
-		Log.d("Thesis", "Task: onCreate");
+		Main.debug("Task: onCreate");
 		super.onCreate();
 
 		this.prefs = PreferenceManager.getDefaultSharedPreferences(this);
@@ -65,13 +65,13 @@ public class Task extends Service
 	@Override
 	public void onDestroy()
 	{
-		Log.d("Thesis", "Task: onDestroy");
+		Main.debug("Task: onDestroy");
 		this.handle(DISCONNECT, null);
 	}
 
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startId) {
-		Log.d("Thesis", "Task: onStart");
+		Main.debug("Task: onStart");
 		super.onStartCommand(intent, flags, startId);
 		int       cmd = intent.getExtras().getInt("Command");
 		Messenger mgr = (Messenger)intent.getExtras().get("Messenger");
@@ -82,7 +82,7 @@ public class Task extends Service
 	@Override
 	public IBinder onBind(Intent intent)
 	{
-		Log.d("Thesis", "Task: onBind");
+		Main.debug("Task: onBind");
 		return null;
 	}
 }

@@ -34,7 +34,7 @@ public class Socket extends WebChromeClient
 
 	// Main
 	public Socket() {
-		Log.d("Control", "Setting up network");
+		Main.debug("Socket: setting up network");
 		try {
 			this.send = DatagramChannel.open();
 			this.send.socket().setBroadcast(true);
@@ -43,17 +43,17 @@ public class Socket extends WebChromeClient
 			this.recv.socket().setReuseAddress(true);
 			this.recv.socket().bind(this.RECV_ADDR);
 		} catch (Exception e) {
-			Log.d("Control", "Error creating socket: "
+			Main.debug("Socket: error creating socket: "
 					+ e + ", " + this.RECV_ADDR);
 		}
 	}
 
 	// WebChromeClient
 	public boolean onConsoleMessage(ConsoleMessage cm) {
-		Log.d("Thesis", "WebView: "
+		Main.debug("Socket: onConsoleMessage - "
 			+ cm.sourceId() + ":"
 			+ cm.lineNumber());
-		Log.d("Thesis", "WebView: "
+		Main.debug("Socket: onConsoleMessage - "
 			+ cm.message());
 		return true;
 	}
@@ -66,7 +66,7 @@ public class Socket extends WebChromeClient
 	// Javscript Interface
 	@JavascriptInterface
 	public void broadcast(String mesg) {
-		Log.d("Thesis", "WebView: Broadcast");
+		//Main.debug("Socket: broadcast");
 
 		// Check arguments
 		if (this.send == null)
@@ -82,10 +82,10 @@ public class Socket extends WebChromeClient
 					CharBuffer cbuf = CharBuffer.wrap(text);
 					ByteBuffer bbuf = encoder.encode(cbuf);
 					Socket.this.send.send(bbuf, SEND_ADDR);
-					Log.d("Control", "Sending message: -> "
-						+ SEND_ADDR + " : " + text);
+					//Main.debug("Socket: broadcast - -> "
+					//	+ SEND_ADDR + " : " + text);
 				} catch (Exception e) {
-					Log.d("Control", "Error sending message: " + e);
+					Main.debug("Socket: broadcast - error sending message: " + e);
 				}
 				return null;
 			}

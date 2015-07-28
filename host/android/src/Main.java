@@ -34,7 +34,7 @@ public class Main extends Activity
 	/* Private handler methods */
 	private void onRegister(Task task)
 	{
-		Log.d("Thesis", "Main: onRegister");
+		Main.debug("Main: onRegister");
 		this.task = task;
 		this.update(this.task.isRunning());
 	}
@@ -42,12 +42,12 @@ public class Main extends Activity
 	private void onMessage(String msg)
 	{
 		// Debug
-		Log.d("Thesis", "Main: onMessage - " + msg);
+		Main.debug("Main: onMessage - " + msg);
 	}
 
 	private void onNotify(String text)
 	{
-		Log.d("Thesis", "Main: onNotify - " + text);
+		Main.debug("Main: onNotify - " + text);
 		this.toast.setText(text);
 		this.toast.show();
 	}
@@ -55,7 +55,7 @@ public class Main extends Activity
 	/* Private service methods */
 	private void register()
 	{
-		Log.d("Thesis", "Main: register");
+		Main.debug("Main: register");
 		startService(new Intent(this, Task.class)
 				.putExtra("Command",   Task.REGISTER)
 				.putExtra("Messenger", this.messenger));
@@ -63,7 +63,7 @@ public class Main extends Activity
 
 	private void connect()
 	{
-		Log.d("Thesis", "Main: connect");
+		Main.debug("Main: connect");
 		startService(new Intent(this, Task.class)
 				.putExtra("Command", Task.CONNECT));
 		this.update(true);
@@ -71,7 +71,7 @@ public class Main extends Activity
 
 	private void disconnect()
 	{
-		Log.d("Thesis", "Main: disconnect");
+		Main.debug("Main: disconnect");
 		startService(new Intent(this, Task.class)
 				.putExtra("Command", Task.DISCONNECT));
 		this.update(false);
@@ -86,13 +86,23 @@ public class Main extends Activity
 		startActivity(intent);
 	}
 
+	/* Helpers */
+	public static void debug(String msg)
+	{
+		Log.d("Thesis", msg);
+	}
+	public static void debug(String msg, Exception e)
+	{
+		Log.d("Thesis", msg, e);
+	}
+
 	/* Activity Methods */
 	@Override
 	public void onCreate(Bundle savedInstanceState)
 	{
 		try {
 			super.onCreate(savedInstanceState);
-			Log.d("Thesis", "Main: onCreate");
+			Main.debug("Main: onCreate");
 
 			// Setup preferences
 			PreferenceManager.setDefaultValues(this, R.xml.prefs, false);
@@ -122,7 +132,7 @@ public class Main extends Activity
 			this.register();
 
 		} catch (Exception e) {
-			Log.d("Thesis", "Error setting content view", e);
+			Main.debug("Main: onCreate - error setting content view", e);
 			return;
 		}
 	}
@@ -132,42 +142,42 @@ public class Main extends Activity
 	{
 		super.onStart();
 		this.register();
-		Log.d("Thesis", "Main: onStart");
+		Main.debug("Main: onStart");
 	}
 
 	@Override
 	public void onResume()
 	{
 		super.onResume();
-		Log.d("Thesis", "Main: onResume");
+		Main.debug("Main: onResume");
 	}
 
 	@Override
 	public void onPause()
 	{
 		super.onPause();
-		Log.d("Thesis", "Main: onPause");
+		Main.debug("Main: onPause");
 	}
 
 	@Override
 	public void onStop()
 	{
 		super.onStop();
-		Log.d("Thesis", "Main: onStop");
+		Main.debug("Main: onStop");
 	}
 
 	@Override
 	public void onRestart()
 	{
 		super.onRestart();
-		Log.d("Thesis", "Main: onRestart");
+		Main.debug("Main: onRestart");
 	}
 
 	@Override
 	public void onDestroy()
 	{
 		super.onDestroy();
-		Log.d("Thesis", "Main: onDestroy");
+		Main.debug("Main: onDestroy");
 	}
 
 	@Override
@@ -229,7 +239,7 @@ public class Main extends Activity
 					Main.this.update(false);
 					break;
 				default:
-					Log.d("Thesis", "Main: unknown message - " + msg.what);
+					Main.debug("Main: handleMessage - unknown message '" + msg.what + "'");
 					break;
 			}
 		}
