@@ -15,6 +15,7 @@ function guid()
 // Android interface
 function android_callback(text)
 {
+	console.log("android_callback: " + text);
 	var obj = JSON.parse(text);
 	for (var key in sock_clients)
 		if (sock_clients[key].receive)
@@ -22,10 +23,6 @@ function android_callback(text)
 }
 
 // API functions
-function connect()
-{
-}
-
 function listen(discover, receive) 
 {
 	var id = guid()
