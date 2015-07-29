@@ -1,0 +1,10 @@
+#!/bin/bash
+
+function do_recv {
+	socat UDP-RECVFROM:$PORT,broadcast,reuseaddr,fork SYSTEM:$CMD,pipes,fdout=3
+}
+
+CMD=more
+PORT=12345
+
+do_recv
