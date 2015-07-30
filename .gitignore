@@ -7,3 +7,9 @@ host/android/config.mk
 host/android/bin/
 host/android/gen/
 host/android/obj/
+
+# Daemon files
+host/daemon/config.mk
+host/daemon/thesis
+host/daemon/*.o
+
