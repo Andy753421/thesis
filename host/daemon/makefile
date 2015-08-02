@@ -2,14 +2,14 @@
 
 PROG   ?= thesis
 GCC    ?= gcc
-CFLAGS ?= -g -Wall --std=c99
+CFLAGS ?= -g -Wall -Werror --std=c99
 
 all: $(PROG)
 
 clean:
 	rm -f $(PROG) *.o
 
-$(PROG): main.o
+$(PROG): main.o peer.o poll.o sock.o
 	$(GCC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 %.o: %.c $(wildcard *.h) makefile
