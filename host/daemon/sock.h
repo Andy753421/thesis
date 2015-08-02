@@ -1,7 +1,11 @@
 /* Functions */
-void sock_init(const char *host, int port, int *fd);
+void sock_bc(const char *host, int port, int *fd);
 
-int  sock_accept(void);
+void sock_mc(const char *host, int port, int *fd);
+
+void sock_tcp(const char *host, int port, int *fd);
+
+int  sock_accept(int fd);
 
 void sock_close(int fd);
 

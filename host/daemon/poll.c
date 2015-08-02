@@ -47,7 +47,7 @@ void poll_del(int fd)
 		error("Error deleting poll");
 }
 
-int poll_wait(int *data, int *events)
+int poll_wait(int *data)
 {
 	struct epoll_event event;
 	int count = epoll_wait(epoll, &event, 1, MAX_WAIT);
@@ -58,7 +58,6 @@ int poll_wait(int *data, int *events)
 	if (count == 0)
 		return EVT_TIMEOUT;
 
-	*events = event.events;
 	*data   = (&event.data.u32)[1];
 	return    (&event.data.u32)[0];
 }

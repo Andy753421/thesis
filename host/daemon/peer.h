@@ -1,19 +1,17 @@
+/* Constants */
+#define NUM_TYPES 3
+
 /* Types */
 typedef enum {
-	CMD_NONE,
-	CMD_WRITE,
-	CMD_CLOSE,
-} cmd_t;
-
-typedef enum {
-	TYP_RAW,
-	TYP_WS,
-} typ_t;
+	TYP_UDP,
+	TYP_TCP,
+	TYP_WEB,
+} type_t;
 
 /* Functions */
 void peer_init(void);
 
-int  peer_add(int fd);
+int  peer_add(int fd, int type);
 
 void peer_del(int id, int *old, int *new);
 

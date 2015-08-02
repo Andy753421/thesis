@@ -14,6 +14,6 @@ void poll_mod(int fd, int type, int data);
 
 void poll_del(int fd);
 
-int  poll_wait(int *data, int *events);
+int  poll_wait(int *data);
 
 void poll_exit(void);

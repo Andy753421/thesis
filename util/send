@@ -4,8 +4,8 @@ function do_send {
 	socat STDIN UDP-SENDTO:$ADDR:$PORT,broadcast,reuseaddr
 }
 
-#ADDR=255.255.255.255
-ADDR=192.168.1.101
+ADDR=255.255.255.255
+#ADDR=192.168.1.101
 PORT=12345
 
 if [ "$*" ]; then
