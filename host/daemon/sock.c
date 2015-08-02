@@ -37,6 +37,9 @@ void sock_bc(const char *host, int port, int *fd)
 
 	if (bind(*fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
 		error("Error binding udp bc socket");
+
+	if (connect(*fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+		error("Error connecting udp bc socket");
 }
 
 void sock_mc(const char *host, int port, int *fd)

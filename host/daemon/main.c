@@ -30,15 +30,18 @@
 
 /* Master sockets */
 static int master[NUM_TYPES];
+static int verbose = 1;
 
 /* Helpers */
 void debug(const char *fmt, ...)
 {
 	va_list ap;
-	va_start(ap, fmt);
-	vfprintf(stdout, fmt, ap);
-	fprintf(stdout, "\n");
-	va_end(ap);
+	if (verbose) {
+		va_start(ap, fmt);
+		vfprintf(stdout, fmt, ap);
+		fprintf(stdout, "\n");
+		va_end(ap);
+	}
 }
 
 void error(const char *str)
@@ -60,7 +63,7 @@ void update(int id)
 
 void on_sigint(int signum)
 {
-	printf("\rShutting down\n");
+	debug("\rShutting down");
 #ifdef USE_TCP
 	sock_close(master[TYP_TCP]);
 #endif
