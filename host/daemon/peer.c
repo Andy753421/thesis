@@ -1,17 +1,40 @@
 #define _POSIX_SOURCE
+#define _GNU_SOURCE
 
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
-//#include <netinet/in.h>
-//#include <arpa/inet.h>
+#include <gnutls/gnutls.h>
+#include <gnutls/crypto.h>
 
 #include <string.h>
+#include <strings.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #include "main.h"
 #include "peer.h"
+
+/* Web Socket Junk */
+#define WS_FINISH 0x80
+#define WS_MASK   0x80
+
+enum {
+	WS_MORE   = 0x00,
+	WS_TEXT   = 0x01,
+	WS_BINARY = 0x02,
+	WS_CLOSE  = 0x08,
+	WS_PING   = 0x09,
+	WS_PONG   = 0x0A,
+} opcode_t;
+
+struct {
+	uint8_t  opcode;
+	uint64_t length;
+	uint32_t masking;
+	uint8_t  data[];
+} mesg_t;
 
 /* Constants */
 #define MAX_PEERS   10
@@ -35,6 +58,14 @@ typedef enum {
 typedef struct {
 	int  mode;
 	int  index;
+
+	// Header attributes
+	int  connect;
+	int  upgrade;
+	int  accept;
+	char key[28];
+
+	// Parser strings
 	char method[MAX_METHOD+1];
 	char path[MAX_PATH+1];
 	char version[MAX_VERSION+1];
@@ -58,8 +89,17 @@ static int     npeers;
 static inline void web_mode(int id, int mode, char *buf)
 {
 	buf[state[id].index] = '\0';
-	state[id].index     = 0;
-	state[id].mode      = mode;
+	state[id].index      = 0;
+	state[id].mode       = mode;
+}
+
+void web_zero(int id)
+{
+	state[id].mode    = 0;
+	state[id].index   = 0;
+	state[id].connect = 0;
+	state[id].upgrade = 0;
+	state[id].accept  = 0;
 }
 
 void web_open(int id, const char *method,
@@ -71,23 +111,35 @@ void web_open(int id, const char *method,
 
 void web_head(int id, const char *field, const char *value)
 {
+	static char hash[20] = {};
+	static char extra[]  = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
 	debug("\tHeader: %-20s -> [%s]", field, value);
-	if (!strcmp(field, "Upgrade")) {
+	if (!strcasecmp(field, "Upgrade")) {
+		state[id].upgrade = !!strcasestr(value, "websocket");
 	}
-	else if (!strcmp(field, "Connection")) {
+	else if (!strcasecmp(field, "Connection")) {
+		state[id].connect = !!strcasestr(value, "upgrade");
 	}
-	else if (!strcmp(field, "Sec-WebSocket-Key")) {
+	else if (!strcasecmp(field, "Sec-WebSocket-Key")) {
+		gnutls_hash_hd_t sha1;
+		gnutls_hash_init(&sha1, GNUTLS_DIG_SHA1);
+		gnutls_hash(sha1, value, strlen(value));
+		gnutls_hash(sha1, extra, strlen(extra));
+		gnutls_hash_output(sha1, hash);
+		state[id].accept = base64(hash, sizeof(hash),
+			state[id].key, sizeof(state[id].key));
 	}
 }
 
-void web_send(int id)
+int web_send(int id)
 {
 	state_t *st = &state[id];
 	FILE    *fd = fdopen(peers[id], "w");
 	debug("Sending to [%s]", st->path);
 	if (!strcmp(st->path, "/")) {
 		fprintf(fd,
-			"HTTP/1.0 200 OK\r\n"
+			"HTTP/1.1 200 OK\r\n"
 			"Content-Type: text/html; charset=UTF-8\r\n"
 			"\r\n"
 			"<html>\r\n"
@@ -97,9 +149,39 @@ void web_send(int id)
 			"</html>\r\n"
 		);
 	}
+	else if (!strcmp(st->path, "/socket")) {
+		debug("socket: connect=%d upgrade=%d accept=%d\n"
+		      "        key=%s",
+		      st->connect, st->upgrade, st->accept, st->key);
+
+		if (st->connect && st->upgrade && st->accept) {
+			fprintf(fd,
+				"HTTP/1.1 101 WebSocket Protocol Handshake\r\n"
+				"Connection: Upgrade\r\n"
+				"Upgrade: WebSocket\r\n"
+				"Sec-WebSocket-Accept: %.*s\r\n"
+				"\r\n",
+				st->accept, st->key
+			);
+			fflush(fd);
+			return 0;
+		}
+		else {
+			fprintf(fd,
+				"HTTP/1.1 400 Bad Request\r\n"
+				"Content-Type: text/html; charset=UTF-8\r\n"
+				"\r\n"
+				"<html>\r\n"
+				"<body>\r\n"
+				"<h1>Bad Request!</h1>\r\n"
+				"</body>\r\n"
+				"</html>\r\n"
+			);
+		}
+	}
 	else {
 		fprintf(fd,
-			"HTTP/1.0 404 Not Found\r\n"
+			"HTTP/1.1 404 Not Found\r\n"
 			"Content-Type: text/html; charset=UTF-8\r\n"
 			"\r\n"
 			"<html>\r\n"
@@ -110,6 +192,7 @@ void web_send(int id)
 		);
 	}
 	fflush(fd);
+	return -1;
 }
 
 int web_recv(int id)
@@ -150,9 +233,10 @@ int web_recv(int id)
 
 			case MD_FIELD:
 				if (ch == '\n') {
-					web_mode(id, MD_METHOD, st->field);
-					web_send(id);
-					status = -1;
+					if ((status = web_send(id)) >= 0)
+						web_mode(id, MD_BODY, st->field);
+					else
+						web_zero(id);
 				} else if (ch == ':')
 					web_mode(id, MD_VALUE, st->field);
 				else if (st->index < MAX_FIELD)
@@ -197,6 +281,8 @@ int peer_add(int fd, int type)
 
 void peer_del(int id, int *old, int *new)
 {
+	// TODO - moving id breaks the status data
+	web_zero(id);
 	*old = peers[id];
 	peers[id] = peers[--npeers];
 	*new = id<npeers ? peers[id] : -1;
@@ -226,6 +312,18 @@ int peer_send(int id)
 	dst = peers[id];
 	if (src == dst) {
 		debug("  From %d bytes <- %d[%d]", len, id, dst);
+		return 0;
+	}
+	else if (types[id] == TYP_WEB) {
+		char head[2] = { WS_FINISH|WS_TEXT, len };
+		if (send(dst, head, 2, 0) < 2) {
+			debug("  Dead %d bytes -> %d[%d]", len, id, dst);
+			return -1;
+		}
+		if (send(dst, buf, len, 0) < len) {
+			debug("  Dead %d bytes -> %d[%d]", len, id, dst);
+			return -1;
+		}
 		return 0;
 	}
 	//else if (types[id] == TYP_UDP) {

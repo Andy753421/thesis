@@ -1,8 +1,9 @@
 -include config.mk
 
-PROG   ?= thesis
-GCC    ?= gcc
-CFLAGS ?= -g -Wall -Werror --std=c99
+PROG    ?= thesis
+GCC     ?= gcc
+CFLAGS  ?= -g -Wall -Werror --std=c99
+LDFLAGS ?= -lgnutls
 
 all: $(PROG)
 

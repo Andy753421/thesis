@@ -50,6 +50,53 @@ void error(const char *str)
 	exit(-1);
 }
 
+int base64(const void *_in, int ilen, void *_out, int olen)
+{
+	static const char table[] =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		"abcdefghijklmnopqrstuvwxyz"
+		"0123456789+/";
+
+	const unsigned char *in  = _in;
+	unsigned char       *out = _out;
+
+	int val = 0;
+	int len = ((ilen-1)/3+1)*4;
+
+	if (olen < len)
+		return 0;
+
+	for (int i=0; i<ilen/3; i++) {
+		val      = *(in++) << 020;
+		val     |= *(in++) << 010;
+		val     |= *(in++) << 000;
+		*(out++) = table[(val>>6*3)&077];
+		*(out++) = table[(val>>6*2)&077];
+		*(out++) = table[(val>>6*1)&077];
+		*(out++) = table[(val>>6*0)&077];
+	}
+
+	switch (ilen%3) {
+		case 2:
+			val    = *(in++)<<020;
+			val   |= *(in++)<<010;
+			*out++ = table[(val>>6*3)&077];
+			*out++ = table[(val>>6*2)&077];
+			*out++ = table[(val>>6*1)&077];
+			*out++ = '=';
+			break;
+		case 1:
+			val    = *(in++)<<020;
+			*out++ = table[(val>>6*3)&077];
+			*out++ = table[(val>>6*2)&077];
+			*out++ = '=';
+			*out++ = '=';
+			break;
+	}
+
+	return len;
+}
+
 /* Main */
 void update(int id)
 {
