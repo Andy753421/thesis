@@ -1,0 +1,60 @@
+HTTP Header Negotiation
+-----------------------
+Web Socket Request:
+  GET /proxy HTTP/1.1
+  Connection:          Upgrade
+  Upgrade:             WebSocket
+  Sec-WebSocket-Key:   <base64-key>
+
+Web Socket Request:
+  HTTP/1.1 101 WebSocket Protocol Handshake
+  Connection:           Upgrade
+  Upgrade:              WebSocket
+  Sec-WebSocket-Accept: <base64-accept>
+
+Accept computation:
+  extra  = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+  accept = base64(sha1(key + extra))
+
+Web Socket Data Protocol
+------------------------
+Opcode byte:
+  finish -> 0x80
+  opcode -> 0x0F
+	  - more   =  0
+	  - text   =  1
+	  - binary =  2
+	  - close  =  8
+	  - ping   =  9
+	  - pong   = 10
+
+Length byte:
+  masked -> 0x80
+  length -> 0x7F
+    - length = 0..125
+    - ext16  = 126
+    - ext64  = 178
+
+Masking:
+  if length.masked
+     data[i] ^= masking[i%4]
+
+Messages:
+	    +---------+  +---------+  +---------+
+	u8  | opcode  |  | opcode  |  | opcode  |
+	u8  | length  |  | length  |  | length  |
+	u16 |         |  | extend  |  |         |
+	u64 |         |  |         |  | extend  |
+  u8  | data[]  |  | data[]  |  | data[]  |
+	    +---------+  +---------+  +---------+
+      
+	    +---------+  +---------+  +---------+
+	u8  | opcode  |  | opcode  |  | opcode  |
+	u8  | length  |  | length  |  | length  |
+	u16 |         |  | extend  |  |         |
+  u64 |         |  |         |  | extend  |
+  u8  | masking |  | masking |  | masking |
+  u8  | data[]  |  | data[]  |  | data[]  |
+	    +---------+  +---------+  +---------+
+
+# vim: ft=txt nospell

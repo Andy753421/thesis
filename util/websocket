@@ -1,0 +1,9 @@
+#!/bin/bash
+
+cat - <<-EOF | netcat localhost 8080
+	GET /socket HTTP/1.0
+	Connection: Upgrade
+	Upgrade: WebSocket
+	Sec-WebSocket-Key: uRovscZjNol/umbTt5uKmw==
+
+EOF

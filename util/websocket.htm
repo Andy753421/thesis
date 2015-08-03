@@ -1,0 +1,48 @@
+<html>
+	<head>
+		<title>Socket Test</title>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+		<style>
+			pre {
+				background: #f8f8ff;
+				border:     solid 1px #8080ff;
+				padding:    4px;
+				margin:     4px;
+			}
+		</style>
+	</head>
+	<body>
+		<script type="text/javascript">
+			function debug(text) {
+				var box = document.createElement("pre");
+				var txt  = document.createTextNode(text);
+				box.appendChild(txt);
+				document.body.appendChild(box);
+			}
+
+			var uri  = 'ws://127.0.0.1:8080/socket';
+			var sock = new WebSocket(uri);
+
+			if (sock == null)
+				alert('error connecting');
+
+			debug("connect: " + sock + " : ready=" + sock.readyState);
+
+			sock.onopen = function(e) {
+				debug("onopen: " + e + " : ready=" + sock.readyState);
+			}
+
+			sock.onclose = function(e) {
+				debug("onclose: " + e + " : ready=" + sock.readyState);
+			}
+
+			sock.onerror = function(e) {
+				debug("onerror: " + e + " : ready=" + sock.readyState);
+			}
+
+			sock.onmessage = function (e) {
+				debug("onmessage: " + e + " : ready=" + sock.readyState);
+			}
+		</script>
+	</body>
+</html>
