@@ -1,6 +1,7 @@
 # Common files
 *~
 *.swp
+tags
 
 # Andoird Host files
 host/android/config.mk

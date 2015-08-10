@@ -1,7 +1,7 @@
 #include <sys/epoll.h>
 #include <stdlib.h>
 
-#include "main.h"
+#include "util.h"
 #include "poll.h"
 
 /* Constants */

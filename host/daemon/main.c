@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "main.h"
+#include "util.h"
 #include "peer.h"
 #include "poll.h"
 #include "sock.h"
@@ -30,84 +30,8 @@
 
 /* Master sockets */
 static int master[NUM_TYPES];
-static int verbose = 1;
-
-/* Helpers */
-void debug(const char *fmt, ...)
-{
-	va_list ap;
-	if (verbose) {
-		va_start(ap, fmt);
-		vfprintf(stdout, fmt, ap);
-		fprintf(stdout, "\n");
-		va_end(ap);
-	}
-}
-
-void error(const char *str)
-{
-	perror(str);
-	exit(-1);
-}
-
-int base64(const void *_in, int ilen, void *_out, int olen)
-{
-	static const char table[] =
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-		"abcdefghijklmnopqrstuvwxyz"
-		"0123456789+/";
-
-	const unsigned char *in  = _in;
-	unsigned char       *out = _out;
-
-	int val = 0;
-	int len = ((ilen-1)/3+1)*4;
-
-	if (olen < len)
-		return 0;
-
-	for (int i=0; i<ilen/3; i++) {
-		val      = *(in++) << 020;
-		val     |= *(in++) << 010;
-		val     |= *(in++) << 000;
-		*(out++) = table[(val>>6*3)&077];
-		*(out++) = table[(val>>6*2)&077];
-		*(out++) = table[(val>>6*1)&077];
-		*(out++) = table[(val>>6*0)&077];
-	}
-
-	switch (ilen%3) {
-		case 2:
-			val    = *(in++)<<020;
-			val   |= *(in++)<<010;
-			*out++ = table[(val>>6*3)&077];
-			*out++ = table[(val>>6*2)&077];
-			*out++ = table[(val>>6*1)&077];
-			*out++ = '=';
-			break;
-		case 1:
-			val    = *(in++)<<020;
-			*out++ = table[(val>>6*3)&077];
-			*out++ = table[(val>>6*2)&077];
-			*out++ = '=';
-			*out++ = '=';
-			break;
-	}
-
-	return len;
-}
 
 /* Main */
-void update(int id)
-{
-	int old, new;
-	peer_del(id, &old, &new);
-	poll_del(old);
-	sock_close(old);
-	if (new >= 0)
-		poll_mod(new, EVT_SLAVE, id);
-}
-
 void on_sigint(int signum)
 {
 	debug("\rShutting down");
@@ -155,7 +79,8 @@ int main(int argc, char **argv)
 
 	/* Listen for connections */
 	while (1) {
-		int fd, id, data, cnt;
+		char *buf;
+		int fd, id, data, cnt, len;
 		int ev = poll_wait(&data);
 
 		switch (ev) {
@@ -173,16 +98,23 @@ int main(int argc, char **argv)
 
 			case EVT_SLAVE:
 				id  = data;
-				cnt = peer_recv(id);
+				cnt = peer_recv(id, &buf, &len);
 				if (cnt < 0) {
-					update(id);
+					int fd = peer_del(id);
+					poll_del(fd);
+					sock_close(fd);
 					continue;
 				}
-				for (int i = 0; i < cnt; i++) {
-					if (peer_send(i) < 0) {
-						update(i);
+				for (int ii = 0; ii < cnt; ii++) {
+					int to = peer_get(ii);
+					if (id == to)
+						continue;
+					if (peer_send(to, buf, len) < 0) {
+						int fd = peer_del(id);
+						poll_del(fd);
+						sock_close(fd);
 						cnt--;
-						i--;
+						ii--;
 					}
 				}
 				break;

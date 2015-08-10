@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "main.h"
+#include "util.h"
 #include "sock.h"
 
 /* Functions */

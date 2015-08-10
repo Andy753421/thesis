@@ -10,7 +10,7 @@ all: $(PROG)
 clean:
 	rm -f $(PROG) *.o
 
-$(PROG): main.o peer.o poll.o sock.o
+$(PROG): main.o util.o peer.o poll.o sock.o udp.o tcp.o web.o
 	$(GCC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 %.o: %.c $(wildcard *.h) makefile
