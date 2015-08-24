@@ -5,7 +5,7 @@
 #include "util.h"
 
 /* Global Data */
-int verbose = 1;
+int verbose = 0;
 
 /* Helper Functions */
 void debug(const char *fmt, ...)

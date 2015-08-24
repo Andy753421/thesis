@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "util.h"
 #include "peer.h"
@@ -47,7 +48,13 @@ void on_sigint(int signum)
 
 int main(int argc, char **argv)
 {
+#if defined(USE_BC) || defined(USE_MC)
 	int fd, id;
+#endif
+
+	/* Check arguments */
+	if (argc > 1 && !strcmp(argv[1], "-v"))
+		verbose = 1;
 
 	/* Setup main */
 	setbuf(stdout, NULL);
