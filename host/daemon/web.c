@@ -7,10 +7,13 @@
 #include <gnutls/gnutls.h>
 #include <gnutls/crypto.h>
 
-#include <strings.h>
-#include <string.h>
+#include <unistd.h>
+
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <strings.h>
 
 #include "util.h"
 #include "peer.h"
@@ -57,7 +60,7 @@ typedef enum {
 struct web_t {
 	// Web socket stuff
 	int   cache;
-	FILE *file;
+	int   sock;
 	int   mode;
 	int   idx;
 
@@ -86,6 +89,18 @@ static void web_mode(web_t *web, int mode, char *buf)
 	buf[web->idx] = '\0';
 	web->idx      = 0;
 	web->mode     = mode;
+}
+
+
+static int web_printf(int sock, const char *fmt, ...)
+{
+	static char buf[512];
+
+	va_list ap;
+	va_start(ap, fmt);
+	int len = vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+	return send(sock, buf, len, MSG_DONTWAIT);
 }
 
 /* Web parser functions */
@@ -122,7 +137,7 @@ static int web_body(web_t *web)
 {
 	debug("  Web Body: path=%s", web->path);
 	if (!strcmp(web->path, "/")) {
-		fprintf(web->file,
+		web_printf(web->sock,
 			"HTTP/1.1 200 OK\r\n"
 			"Content-Type: text/html; charset=UTF-8\r\n"
 			"\r\n"
@@ -139,7 +154,7 @@ static int web_body(web_t *web)
 		      web->connect, web->upgrade, web->accept, web->key);
 
 		if (web->connect && web->upgrade && web->accept) {
-			fprintf(web->file,
+			web_printf(web->sock,
 				"HTTP/1.1 101 WebSocket Protocol Handshake\r\n"
 				"Connection: Upgrade\r\n"
 				"Upgrade: WebSocket\r\n"
@@ -147,11 +162,10 @@ static int web_body(web_t *web)
 				"\r\n",
 				web->accept, web->key
 			);
-			fflush(web->file);
 			return 0;
 		}
 		else {
-			fprintf(web->file,
+			web_printf(web->sock,
 				"HTTP/1.1 400 Bad Request\r\n"
 				"Content-Type: text/html; charset=UTF-8\r\n"
 				"\r\n"
@@ -164,7 +178,7 @@ static int web_body(web_t *web)
 		}
 	}
 	else {
-		fprintf(web->file,
+		web_printf(web->sock,
 			"HTTP/1.1 404 Not Found\r\n"
 			"Content-Type: text/html; charset=UTF-8\r\n"
 			"\r\n"
@@ -175,7 +189,6 @@ static int web_body(web_t *web)
 			"</html>\r\n"
 		);
 	}
-	fflush(web->file);
 	return -1;
 }
 
@@ -189,7 +202,7 @@ web_t *web_add(int sock)
 {
 	web_t *web = alloc_get_ptr(&alloc, peers);
 	if (web) {
-		web->file    = fdopen(sock, "w");
+		web->sock    = sock;
 		web->mode    = 0;
 		web->idx     = 0;
 		web->connect = 0;
@@ -207,11 +220,10 @@ void web_del(web_t *web)
 int web_send(web_t *web, char *buf, int len)
 {
 	char head[2] = { WS_FINISH|WS_TEXT, len };
-	if (fwrite(head, 2, 1, web->file) < 1)
+	if (write(web->sock, head, 2) < 1)
 		return -1;
-	if (fwrite(buf, len, 1, web->file) < 1)
+	if (write(web->sock, buf, len) < 1)
 		return -1;
-	fflush(web->file);
 	return 0;
 }
 
