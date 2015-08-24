@@ -12,12 +12,20 @@
 		</style>
 	</head>
 	<body>
+		<p>
+			<input type="button" onclick="javascript:send();" value="Send Message" />
+		</p>
 		<script type="text/javascript">
 			function debug(text) {
 				var box = document.createElement("pre");
 				var txt  = document.createTextNode(text);
 				box.appendChild(txt);
 				document.body.appendChild(box);
+			}
+			function send() {
+				var text = "hello, world"
+				debug("send: " + sock + " : text=" + text)
+				sock.send(text)
 			}
 
 			var uri  = 'ws://127.0.0.1:8080/socket';
@@ -41,7 +49,8 @@
 			}
 
 			sock.onmessage = function (e) {
-				debug("onmessage: " + e + " : ready=" + sock.readyState);
+				debug("onmessage: " + e + " : ready=" + sock.readyState
+						        + " : text="  + e.data);
 			}
 		</script>
 	</body>
