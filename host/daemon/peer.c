@@ -143,7 +143,7 @@ int peer_send(int id, char *buf, int len)
 void peer_exit(void)
 {
 	for (int ii = 0; ii < alloc.used; ii++) {
-		int id   = cache[id].buf_i;
+		int id   = cache[ii].buf_i;
 		int sock = peers[id].sock;
 		shutdown(sock, SHUT_RDWR);
 		close(sock);
