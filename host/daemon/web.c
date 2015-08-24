@@ -4,8 +4,13 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#ifdef USE_GNUTLS
 #include <gnutls/gnutls.h>
 #include <gnutls/crypto.h>
+#endif
+#ifdef USE_OPENSSL
+#include <openssl/sha.h>
+#endif
 
 #include <unistd.h>
 
@@ -123,11 +128,20 @@ static void web_head(web_t *web, const char *field, const char *value)
 		web->connect = !!strcasestr(value, "upgrade");
 	}
 	else if (!strcasecmp(field, "Sec-WebSocket-Key")) {
+#ifdef USE_GNUTLS
 		gnutls_hash_hd_t sha1;
 		gnutls_hash_init(&sha1, GNUTLS_DIG_SHA1);
 		gnutls_hash(sha1, value, strlen(value));
 		gnutls_hash(sha1, extra, strlen(extra));
 		gnutls_hash_output(sha1, hash);
+#endif
+#ifdef USE_OPENSSL
+		SHA_CTX sha1;
+		SHA1_Init(&sha1);
+		SHA1_Update(&sha1, value, strlen(value));
+		SHA1_Update(&sha1, extra, strlen(extra));
+		SHA1_Final((unsigned char*)hash, &sha1);
+#endif
 		web->accept = base64(hash, sizeof(hash),
 			web->key, sizeof(web->key));
 	}

@@ -1,9 +1,11 @@
 -include config.mk
 
-PROG    ?= thesis
-GCC     ?= gcc
-CFLAGS  ?= -g -Wall -Werror --std=c99
-LDFLAGS ?= -lgnutls
+PROG     ?= thesis
+GCC      ?= gcc
+CFLAGS   ?= -g -Wall -Werror --std=c99
+
+CPPFLAGS += -DUSE_OPENSSL
+LDFLAGS  += -lcrypto
 
 all: $(PROG)
 
@@ -14,4 +16,4 @@ $(PROG): main.o util.o peer.o poll.o sock.o udp.o tcp.o web.o
 	$(GCC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 %.o: %.c $(wildcard *.h) makefile
-	$(GCC) $(CFLAGS) -c -o $@ $<
+	$(GCC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
