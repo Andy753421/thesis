@@ -1,4 +1,5 @@
 #include <sys/epoll.h>
+#include <errno.h>
 #include <stdlib.h>
 
 #include "util.h"
@@ -6,9 +7,13 @@
 
 /* Constants */
 #define MAX_WAIT   1000
+#define MAX_EVENTS 100
 
 /* Poll Data */
 static int epoll;
+static int count;
+static int index;
+static struct epoll_event events[MAX_EVENTS];
 
 /* Poll functions */
 void poll_init(void)
@@ -29,18 +34,6 @@ void poll_add(int fd, int type, int data)
 		error("Error adding poll");
 }
 
-void poll_mod(int fd, int type, int data)
-{
-	struct epoll_event ctl = {};
-
-	ctl.events = EPOLLIN;
-	(&ctl.data.u32)[0] = type;
-	(&ctl.data.u32)[1] = data;
-
-	if (epoll_ctl(epoll, EPOLL_CTL_MOD, fd, &ctl) < 0)
-		error("Error modifying poll");
-}
-
 void poll_del(int fd)
 {
 	if (epoll_ctl(epoll, EPOLL_CTL_DEL, fd, NULL) < 0)
@@ -49,15 +42,23 @@ void poll_del(int fd)
 
 int poll_wait(int *data)
 {
-	struct epoll_event event;
-	int count = epoll_wait(epoll, &event, 1, MAX_WAIT);
+	if (index == count) {
+		index = 0;
+		do {
+			errno = 0;
+			count = epoll_wait(epoll, events, MAX_EVENTS, MAX_WAIT);
+		} while (errno == EINTR);
 
-	if (count < 0)
-		error("Error waiting for event");
+		if (count < 0)
+			error("Error waiting for event");
 
-	if (count == 0)
-		return EVT_TIMEOUT;
+		if (count == 0)
+			return EVT_TIMEOUT;
+	}
 
-	*data   = (&event.data.u32)[1];
-	return    (&event.data.u32)[0];
+	int type = (&events[index].data.u32)[0];
+	*data    = (&events[index].data.u32)[1];
+	index++;
+
+	return type;
 }

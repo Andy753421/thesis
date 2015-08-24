@@ -2,9 +2,9 @@
 #define NUM_TYPES 3
 
 /* Peer constants */
-#define TCP_PEERS 10
-#define UDP_PEERS 10
-#define WEB_PEERS 10
+#define TCP_PEERS 100
+#define UDP_PEERS 100
+#define WEB_PEERS 100
 
 /* Types */
 typedef enum {
