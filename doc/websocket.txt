@@ -33,7 +33,7 @@ Length byte:
   length -> 0x7F
     - length = 0..125
     - ext16  = 126
-    - ext64  = 178
+    - ext64  = 127
 
 Masking:
   if length.masked

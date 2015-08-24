@@ -29,6 +29,10 @@ void error(const char *str);
 
 int base64(const void *in, int ilen, void *out, int olen);
 
+unsigned short net16(unsigned short in);
+
+unsigned long long net64(unsigned long long in);
+
 /* Alloc Functions */
 void alloc_init(alloc_t *alloc, idx_t *idx, int size);
 

@@ -72,6 +72,31 @@ int base64(const void *_in, int ilen, void *_out, int olen)
 	return len;
 }
 
+
+unsigned short net16(unsigned short in)
+{
+	unsigned short out = 0;
+	unsigned char  *b  = (void*)&out;
+	b[0] |= (in >> 010) & 0xFF;
+	b[1] |= (in >> 000) & 0xFF;
+	return out;
+}
+
+unsigned long long net64(unsigned long long in)
+{
+	unsigned long long out = 0;
+	unsigned char      *b  = (void*)&out;
+	b[0] |= (in >> 070) & 0xFF;
+	b[1] |= (in >> 060) & 0xFF;
+	b[2] |= (in >> 050) & 0xFF;
+	b[3] |= (in >> 040) & 0xFF;
+	b[4] |= (in >> 030) & 0xFF;
+	b[5] |= (in >> 020) & 0xFF;
+	b[6] |= (in >> 010) & 0xFF;
+	b[7] |= (in >> 000) & 0xFF;
+	return out;
+}
+
 /* Alloc Functions */
 void alloc_init(alloc_t *alloc, idx_t *idx, int size)
 {

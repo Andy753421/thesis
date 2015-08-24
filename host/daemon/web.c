@@ -233,8 +233,29 @@ void web_del(web_t *web)
 
 int web_send(web_t *web, char *buf, int len)
 {
-	char head[2] = { WS_FINISH|WS_TEXT, len };
-	if (write(web->sock, head, 2) < 1)
+	int     bytes    = 0;
+	uint8_t head[10] = { WS_FINISH|WS_TEXT };
+
+	uint8_t  *flag  = (uint8_t *)&head[1];
+	uint16_t *ext16 = (uint16_t*)&head[2];
+	uint64_t *ext64 = (uint64_t*)&head[2];
+
+	if (len < 126) {
+		bytes  = 2;
+		*flag  = len;
+	}
+	else if (len < 0x10000) {
+		bytes  = 4;
+		*flag  = 126;
+		*ext16 = net16(len);
+	}
+	else {
+		bytes  = 10;
+		*flag  = 127;
+		*ext64 = net64(len);
+	}
+
+	if (write(web->sock, head, bytes) < 1)
 		return -1;
 	if (write(web->sock, buf, len) < 1)
 		return -1;
