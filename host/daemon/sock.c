@@ -4,9 +4,13 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #include "util.h"
 #include "sock.h"
+
+/* Constants */
+#define BACKLOG 1000
 
 /* Functions */
 void sock_bc(const char *host, int port, int *fd)
@@ -93,7 +97,7 @@ void sock_tcp(const char *host, int port, int *fd)
 	if (bind(*fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
 		error("Error binding tcp socket");
 
-	if (listen(*fd, 0) < 0)
+	if (listen(*fd, BACKLOG) < 0)
 		error("Error listening on tcp socket");
 }
 
@@ -103,8 +107,13 @@ int sock_accept(int master)
 	struct sockaddr_in addr = {};
 	socklen_t length = sizeof(addr);
 
-	if ((slave = accept(master, (struct sockaddr*)&addr, &length)) < 0)
-		error("Error accepting peer");
+	errno = 0;
+	if ((slave = accept(master, (struct sockaddr*)&addr, &length)) < 0) {
+		if (errno == EAGAIN)
+			return -1;
+		else
+			error("Error accepting peer");
+	}
 
 	if ((flags = fcntl(slave, F_GETFL, 0)) < 0)
 		error("Error getting slave flags");

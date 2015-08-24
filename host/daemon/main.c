@@ -95,12 +95,13 @@ int main(int argc, char **argv)
 				break;
 
 			case EVT_MASTER:
-				fd = sock_accept(master[data]);
-				id = peer_add(fd, data);
-				if (id >= 0)
-					poll_add(fd, EVT_SLAVE, id);
-				else
-					sock_close(fd);
+				while ((fd = sock_accept(master[data])) >= 0) {
+					id = peer_add(fd, data);
+					if (id >= 0)
+						poll_add(fd, EVT_SLAVE, id);
+					else
+						sock_close(fd);
+				}
 				break;
 
 			case EVT_SLAVE:
