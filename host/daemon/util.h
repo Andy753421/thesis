@@ -23,6 +23,8 @@ typedef struct {
 extern int verbose;
 
 /* Helper Functions */
+void trace(const char *fmt, ...);
+
 void debug(const char *fmt, ...);
 
 void error(const char *str);

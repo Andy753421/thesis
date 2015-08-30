@@ -8,10 +8,21 @@
 int verbose = 0;
 
 /* Helper Functions */
+void trace(const char *fmt, ...)
+{
+	va_list ap;
+	if (verbose > 1) {
+		va_start(ap, fmt);
+		vfprintf(stdout, fmt, ap);
+		fprintf(stdout, "\n");
+		va_end(ap);
+	}
+}
+
 void debug(const char *fmt, ...)
 {
 	va_list ap;
-	if (verbose) {
+	if (verbose > 0) {
 		va_start(ap, fmt);
 		vfprintf(stdout, fmt, ap);
 		fprintf(stdout, "\n");

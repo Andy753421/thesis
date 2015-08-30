@@ -46,6 +46,7 @@ enum {
 
 /* Web Socket Types */
 struct {
+	uint8_t  finish;
 	uint8_t  opcode;
 	uint64_t length;
 	uint32_t masking;
@@ -89,6 +90,7 @@ struct web_t {
 	char  hdr_value[MAX_VALUE+1];
 
 	// WebSocket attributes
+	uint8_t  ws_finish;
 	uint8_t  ws_opcode;
 	uint8_t  ws_masked;
 	uint8_t  ws_mask[4];
@@ -124,7 +126,7 @@ static int web_printf(int sock, const char *fmt, ...)
 static void web_open(web_t *web, const char *method,
 		const char *path, const char *version)
 {
-	debug("  Web Open: %s [%s] [%s]", method, path, version);
+	trace("  web_open: %s [%s] [%s]", method, path, version);
 }
 
 static void web_head(web_t *web, const char *field, const char *value)
@@ -132,7 +134,7 @@ static void web_head(web_t *web, const char *field, const char *value)
 	static char hash[20] = {};
 	static char extra[]  = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-	debug("    Web Head: %-20s -> [%s]", field, value);
+	trace("    web_head: %-20s -> [%s]", field, value);
 	if (!strcasecmp(field, "Upgrade")) {
 		web->hdr_upgrade = !!strcasestr(value, "websocket");
 	}
@@ -161,7 +163,7 @@ static void web_head(web_t *web, const char *field, const char *value)
 
 static int web_body(web_t *web)
 {
-	debug("  Web Body: path=%s", web->req_path);
+	trace("  web_body: path=%s", web->req_path);
 	if (!strcmp(web->req_path, "/")) {
 		web_printf(web->sock,
 			"HTTP/1.1 200 OK\r\n"
@@ -175,7 +177,7 @@ static int web_body(web_t *web)
 		);
 	}
 	else if (!strcmp(web->req_path, "/socket")) {
-		debug("  Web Sock: connect=%d upgrade=%d accept=%d\n"
+		trace("  web_body: socket - connect=%d upgrade=%d accept=%d\n"
 		      "            key=%s",
 		      web->hdr_connect, web->hdr_upgrade, web->hdr_accept, web->hdr_key);
 
@@ -236,6 +238,7 @@ web_t *web_add(int sock)
 		web->hdr_upgrade = 0;
 		web->hdr_accept  = 0;
 
+		web->ws_finish   = 0;
 		web->ws_opcode   = 0;
 		web->ws_masked   = 0;
 		web->ws_length   = 0;
@@ -284,7 +287,7 @@ int web_send(web_t *web, char *buf, int len)
 
 int web_parse(web_t *web, char **buf, int *len)
 {
-	int status = 0;
+	int mode = 0, status = 0;
 	for (int i = 0; i < *len; i++) {
 		uint8_t ch = (*buf)[i];
 
@@ -324,8 +327,8 @@ int web_parse(web_t *web, char **buf, int *len)
 
 			case MD_FIELD:
 				if (ch == '\n') {
-					if ((status = web_body(web)) >= 0)
-						web_mode(web, status, web->hdr_field);
+					if ((mode = web_body(web)) >= 0)
+						web_mode(web, mode, web->hdr_field);
 				} else if (ch == ':')
 					web_mode(web, MD_VALUE, web->hdr_field);
 				else if (web->idx < MAX_FIELD)
@@ -341,21 +344,33 @@ int web_parse(web_t *web, char **buf, int *len)
 				break;
 
 			case MD_BODY:
-				debug("  Web Body: ...");
+				trace("  web_body: ...");
 				break;
 
 			/* Web Socket Parsing */
 			case MD_OPCODE:
-				web->ws_opcode = ch;
+				trace("web_parse: opcode - fin=%d, op=%s",
+						(ch&0x80) !=  0,
+						(ch&0x0F) ==  0 ? "more  " :
+	  					(ch&0x0F) ==  1 ? "text  " :
+	  					(ch&0x0F) ==  2 ? "binary" :
+	  					(ch&0x0F) ==  8 ? "close " :
+	  					(ch&0x0F) ==  9 ? "ping  " :
+	  					(ch&0x0F) == 10 ? "pong  " : "unknown");
+
+				web->ws_finish = (ch&0x80)!=0;
+				web->ws_opcode = (ch&0x0F);
 				web->mode      = MD_LENGTH;
 				break;
 
 			case MD_LENGTH:
+				trace("web_parse: length - masked=%d, length=%d",
+						(ch&0x80) != 0,
+						(ch&0x7F));
+
 				web->ws_length = (ch&0x7F);
 				web->ws_masked = (ch&0x80)!=0;
 
-				debug("web_parse: length - ch=%02hhx, masked=%hhd, length=%hhd",
-						ch, web->ws_masked, web->ws_length);
 
 				if (web->ws_length == 126) {
 					web->ws_length = 0;
@@ -376,9 +391,11 @@ int web_parse(web_t *web, char **buf, int *len)
 				break;
 
 			case MD_EXTEND:
-				debug("web_parse: extend");
+				trace("web_parse: extend - %d=%02hhx", web->idx, ch);
+
 				web->idx       -= 1;
 				web->ws_length |= ((uint64_t)ch) << (web->idx*8);
+
 				if (web->idx == 0) {
 					if (web->ws_masked)
 						web->mode = MD_MASKED;
@@ -388,7 +405,8 @@ int web_parse(web_t *web, char **buf, int *len)
 				break;
 
 			case MD_MASKED:
-				debug("web_parse: masked - %d=%02x", web->idx, ch);
+				trace("web_parse: masked - %d=%02hhx", web->idx, ch);
+
 				web->ws_mask[web->idx++] = ch;
 				if (web->idx >= 4) {
 					web->idx  = 0;
@@ -397,24 +415,24 @@ int web_parse(web_t *web, char **buf, int *len)
 				break;
 
 			case MD_DATA:
-				debug("web_parse: data   - "
-						"op=%d:%02x "
-						"len=%d:%d "
-						"mask=%02hhx%02hhx%02hhx%02hhx "
-						"ch=%02hhx:'%c'",
-						web->ws_opcode == 0x80,
-						web->ws_opcode &  0x0F,
-						web->ws_masked,
-						web->ws_length,
-						web->ws_mask[0], web->ws_mask[1],
-						web->ws_mask[2], web->ws_mask[3],
-						ch,
-						ch ^ web->ws_mask[web->idx++%4]);
-				if (web->idx == web->ws_length) {
-					web->idx  = 0;
-					web->mode = MD_OPCODE;
+				*buf = &(*buf)[i];
+				*len = (*len)-i;
+
+				for (int i = 0; i < *len; i++)
+					(*buf)[i] ^= web->ws_mask[i%4];
+
+				web->idx  = 0;
+				web->mode = MD_OPCODE;
+
+				if (*len != web->ws_length) {
+					trace("web_parse: data   - [length error: got %d]",
+							*len);
+					return 0;
+				} else {
+					trace("web_parse: data   - '%.*s'",
+							*len, *buf);
+					return 1;
 				}
-				break;
 		}
 	}
 	return status;
