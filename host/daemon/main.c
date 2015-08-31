@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <getopt.h>
+
 #include "util.h"
 #include "peer.h"
 #include "poll.h"
@@ -29,11 +31,19 @@
 #define USE_TCP
 #define USE_WEB
 
+/* Options */
+static struct option long_options[] = {
+	/* name hasarg flag val */
+	{"verbose", 0, NULL, 'v'},
+	{"help",    0, NULL, 'h'},
+	{NULL,      0, NULL,  0 },
+};
+
 /* Master sockets */
 static int master[NUM_TYPES];
 
-/* Main */
-void on_sigint(int signum)
+/* Helper functions */
+static void on_sigint(int signum)
 {
 	debug("\rShutting down");
 #ifdef USE_TCP
@@ -46,19 +56,49 @@ void on_sigint(int signum)
 	exit(0);
 }
 
+static void usage(char *name)
+{
+	printf("Usage:\n");
+	printf("  %s [OPTION...]\n", name);
+	printf("\n");
+	printf("Options\n");
+	printf("  -v, --verbose Increase verbosity level\n");
+	printf("  -h, --help    Print usage information\n");
+}
+
+static void parse(int argc, char **argv)
+{
+	while (1) {
+		int c = getopt_long(argc, argv, "vh", long_options, NULL);
+		if (c == -1)
+			break;
+		switch (c) {
+			case 'v':
+				verbose++;
+				break;
+			case 'h':
+				usage(argv[0]);
+				exit(0);
+				break;
+			default:
+				usage(argv[0]);
+				exit(-1);
+		}
+	}
+}
+
+
+/* Main */
 int main(int argc, char **argv)
 {
 #if defined(USE_BC) || defined(USE_MC)
 	int fd, id;
 #endif
 
-	/* Check arguments */
-	if (argc > 1 && !strcmp(argv[1], "-v"))
-		verbose = 1;
-
 	/* Setup main */
 	setbuf(stdout, NULL);
 	signal(SIGINT, on_sigint);
+	parse(argc, argv);
 
 	/* Setup polling and sockets */
 	peer_init();

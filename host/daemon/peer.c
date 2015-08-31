@@ -99,6 +99,9 @@ int peer_recv(int id, char **buf, int *len)
 	*buf = rbuf;
 	*len = rlen;
 
+	// Debug
+	debug("Read   %-4d bytes <- %d[%d]", *len, id, sock);
+
 	// Send to peer
 	int status = type==TYP_UDP ? udp_parse(data, buf, len) :
 		     type==TYP_TCP ? tcp_parse(data, buf, len) :
@@ -112,8 +115,6 @@ int peer_recv(int id, char **buf, int *len)
 		return status;
 	}
 
-	// Return;
-	debug("  Read %-4d bytes <- %d[%d]", *len, id, sock);
 	return cnt;
 }
 

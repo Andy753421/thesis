@@ -97,6 +97,31 @@ struct web_t {
 	uint64_t ws_length;
 };
 
+/* Debug data */
+const char *str_mode[] = {
+	[MD_METHOD]  "METHOD",
+	[MD_PATH]    "PATH",
+	[MD_VERSION] "VERSION",
+	[MD_FIELD]   "FIELD",
+	[MD_VALUE]   "VALUE",
+	[MD_BODY]    "BODY",
+
+	[MD_OPCODE]  "OPCODE",
+	[MD_LENGTH]  "LENGTH",
+	[MD_EXTEND]  "EXTEND",
+	[MD_MASKED]  "MASKED",
+	[MD_DATA]    "DATA",
+};
+
+const char *str_opcode[0xF] = {
+	[ 0] "more  ",
+	[ 1] "text  ",
+	[ 2] "binary",
+	[ 8] "close ",
+	[ 9] "ping  ",
+	[10] "pong  ",
+};
+
 /* Local data */
 static web_t   peers[WEB_PEERS];
 static idx_t   cache[WEB_PEERS];
@@ -126,7 +151,7 @@ static int web_printf(int sock, const char *fmt, ...)
 static void web_open(web_t *web, const char *method,
 		const char *path, const char *version)
 {
-	trace("  web_open: %s [%s] [%s]", method, path, version);
+	trace("  web_open:  %s [%s] [%s]", method, path, version);
 }
 
 static void web_head(web_t *web, const char *field, const char *value)
@@ -163,7 +188,7 @@ static void web_head(web_t *web, const char *field, const char *value)
 
 static int web_body(web_t *web)
 {
-	trace("  web_body: path=%s", web->req_path);
+	trace("  web_body:  path=%s", web->req_path);
 	if (!strcmp(web->req_path, "/")) {
 		web_printf(web->sock,
 			"HTTP/1.1 200 OK\r\n"
@@ -177,7 +202,7 @@ static int web_body(web_t *web)
 		);
 	}
 	else if (!strcmp(web->req_path, "/socket")) {
-		trace("  web_body: socket - connect=%d upgrade=%d accept=%d\n"
+		trace("  web_body:  socket - connect=%d upgrade=%d accept=%d\n"
 		      "            key=%s",
 		      web->hdr_connect, web->hdr_upgrade, web->hdr_accept, web->hdr_key);
 
@@ -287,6 +312,8 @@ int web_send(web_t *web, char *buf, int len)
 
 int web_parse(web_t *web, char **buf, int *len)
 {
+	trace("  web_parse: %s", str_mode[web->mode]);
+
 	int mode = 0, status = 0;
 	for (int i = 0; i < *len; i++) {
 		uint8_t ch = (*buf)[i];
@@ -344,19 +371,14 @@ int web_parse(web_t *web, char **buf, int *len)
 				break;
 
 			case MD_BODY:
-				trace("  web_body: ...");
+				trace("  web_parse: body");
 				break;
 
 			/* Web Socket Parsing */
 			case MD_OPCODE:
-				trace("web_parse: opcode - fin=%d, op=%s",
+				trace("    web_parse: opcode - fin=%d, op=%s",
 						(ch&0x80) !=  0,
-						(ch&0x0F) ==  0 ? "more  " :
-	  					(ch&0x0F) ==  1 ? "text  " :
-	  					(ch&0x0F) ==  2 ? "binary" :
-	  					(ch&0x0F) ==  8 ? "close " :
-	  					(ch&0x0F) ==  9 ? "ping  " :
-	  					(ch&0x0F) == 10 ? "pong  " : "unknown");
+						str_opcode[ch&0x0F] ?: "[opcode error]");
 
 				web->ws_finish = (ch&0x80)!=0;
 				web->ws_opcode = (ch&0x0F);
@@ -364,7 +386,7 @@ int web_parse(web_t *web, char **buf, int *len)
 				break;
 
 			case MD_LENGTH:
-				trace("web_parse: length - masked=%d, length=%d",
+				trace("    web_parse: length - masked=%d, length=%d",
 						(ch&0x80) != 0,
 						(ch&0x7F));
 
@@ -391,7 +413,7 @@ int web_parse(web_t *web, char **buf, int *len)
 				break;
 
 			case MD_EXTEND:
-				trace("web_parse: extend - %d=%02hhx", web->idx, ch);
+				trace("    web_parse: extend - %d=%02hhx", web->idx, ch);
 
 				web->idx       -= 1;
 				web->ws_length |= ((uint64_t)ch) << (web->idx*8);
@@ -405,7 +427,7 @@ int web_parse(web_t *web, char **buf, int *len)
 				break;
 
 			case MD_MASKED:
-				trace("web_parse: masked - %d=%02hhx", web->idx, ch);
+				trace("    web_parse: masked - %d=%02hhx", web->idx, ch);
 
 				web->ws_mask[web->idx++] = ch;
 				if (web->idx >= 4) {
@@ -425,11 +447,11 @@ int web_parse(web_t *web, char **buf, int *len)
 				web->mode = MD_OPCODE;
 
 				if (*len != web->ws_length) {
-					trace("web_parse: data   - [length error: got %d]",
+					trace("    web_parse: data   - [length error: got %d]",
 							*len);
 					return 0;
 				} else {
-					trace("web_parse: data   - '%.*s'",
+					trace("    web_parse: data   - '%.*s'",
 							*len, *buf);
 					return 1;
 				}
