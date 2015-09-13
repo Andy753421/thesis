@@ -7,9 +7,9 @@
 
 #include "main.h"
 #include "util.h"
+#include "web.h"
 #include "http.h"
 #include "ws.h"
-#include "web.h"
 
 /* Constants */
 #define SLAVES  100
@@ -83,13 +83,14 @@ static void web_recv(void *_slave)
 static void web_send(void *_slave, void *buf, int len)
 {
 	slave_t *slave = _slave;
-	if (slave->mode == WEB_SOCK) {
-		int slen = ws_send(&slave->ws, buf, len);
-		if (slen != len) {
-			debug("  web_send - fail=%d!=%d", slen, len);
-		} else {
-			debug("  web_send - sent=%d", len);
-		}
+	if (slave->mode != WEB_SOCK)
+		return;
+	int slen = ws_send(&slave->ws, buf, len);
+	if (slen != len) {
+		debug("  web_send - fail=%d!=%d", slen, len);
+		web_drop(slave);
+	} else {
+		debug("  web_send - sent=%d", len);
 	}
 }
 

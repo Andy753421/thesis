@@ -4,9 +4,6 @@
 
 #include <fcntl.h>
 #include <unistd.h>
-#include <errno.h>
-
-#include <stdlib.h>
 
 #include "main.h"
 #include "util.h"
@@ -55,9 +52,9 @@ static void tcp_recv(void *_slave)
 static void tcp_send(void *_slave, void *buf, int len)
 {
 	slave_t *slave = _slave;
-	int rlen = send(slave->sock, buf, len, 0);
-	if (rlen != len) {
-		debug("  tcp_send - fail=%d!=%d", rlen, len);
+	int slen = send(slave->sock, buf, len, 0);
+	if (slen != len) {
+		debug("  tcp_send - fail=%d!=%d", slen, len);
 		tcp_drop(slave);
 	} else {
 		debug("  tcp_send - sent=%d", len);
