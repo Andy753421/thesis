@@ -1,0 +1,46 @@
+<!DOCTYPE html5>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+		<link rel="stylesheet" type="text/css" href="index.css" />
+		<script src="sock.js"></script>
+		<script src="webhost.js"></script>
+		<script src="player.js"></script>
+		<script src="virtual.js"></script>
+		<script>
+			function debug(msg) {
+				var con = document.getElementById('console')
+				var lst = con.getElementsByClassName('scroll')[0]
+				var box = document.createElement('div')
+				box.innerHTML = msg
+				lst.appendChild(box)
+				con.scrollTop = con.scrollHeight;
+			}
+			function load(name, code, run, to) {
+				broadcast({
+					'dst': to  ? to : undefined,
+					'command': run ? 'run' : 'add',
+					'webapp': {
+						'name':    name,
+						'code':    code.toString(),
+						'title':   name,
+					},
+				})
+			}
+			function init() {
+				var elem = document.getElementById('window')
+				var host = new WebHost(elem)
+
+				load('Player', Player, false)
+			}
+		</script>
+	</head>
+	<body onload="init()">
+		<div id="window">
+		</div>
+		<div id="console">
+			<div class="title">Console</div>
+			<pre class="scroll"></pre>
+		</div>
+	</body>
+</html>
