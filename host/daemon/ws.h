@@ -1,5 +1,5 @@
 /* Constants */
-#define MAX_DATA    1500
+#define MAX_DATA    10000
 
 /* Enums */
 enum {
@@ -20,10 +20,10 @@ typedef struct ws_t {
 	uint8_t  ws_masked;
 	uint8_t  ws_mask[4];
 	uint64_t ws_length;
-	char     ws_data[MAX_DATA];
+	uint8_t  ws_data[MAX_DATA];
 } ws_t;
 
 /* Functions */
-int ws_parse(ws_t *ws, char ch, peer_t  *peer);
+int ws_parse(ws_t *ws, uint8_t ch, peer_t  *peer);
 
 int ws_send(ws_t *ws, void *buf, int len);

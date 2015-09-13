@@ -16,9 +16,6 @@
 #include "web.h"
 #include "ws.h"
 
-/* Constants */
-#define MAX_DATA    1500
-
 /* Web Sockets Flags */
 #define OP_FINISH   0x80
 #define OP_MASK     0x80
@@ -53,7 +50,7 @@ static const char *str_opcode[0xF] = {
 };
 
 /* Web Socket Functions */
-int ws_parse(ws_t *ws, char ch, peer_t *peer)
+int ws_parse(ws_t *ws, uint8_t ch, peer_t *peer)
 {
 	switch (ws->mode) {
 		case MD_OPCODE:
@@ -118,6 +115,8 @@ int ws_parse(ws_t *ws, char ch, peer_t *peer)
 			return 0;
 
 		case MD_DATA:
+			//trace("    ws_parse: byte   - %d/%d=%02hhx",
+			//		ws->idx, ws->ws_length, ch);
 			if (ws->idx < MAX_DATA) {
 				uint8_t mask = ws->ws_mask[ws->idx%4];
 				ws->ws_data[ws->idx] = ch ^ mask;

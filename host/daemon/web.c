@@ -47,7 +47,7 @@ static void web_drop(void *_slave)
 
 static void web_recv(void *_slave)
 {
-	static char buf[1500];
+	static char buf[10000];
 
 	slave_t *slave = _slave;
 	int len = recv(slave->sock, buf, sizeof(buf), 0);
@@ -55,7 +55,8 @@ static void web_recv(void *_slave)
 		debug("web_recv   - fail=%d", len);
 		web_drop(slave);
 	} else {
-		debug("web_recv   - recv=%d", len);
+		debug("web_recv   - recv=%d mode=%d",
+				len, slave->mode);
 		for (int i = 0; i < len; i++) {
 			switch (slave->mode) {
 				case WEB_HTTP:
