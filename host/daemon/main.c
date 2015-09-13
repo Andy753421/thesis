@@ -1,4 +1,6 @@
+#include <sys/epoll.h>
 #include <signal.h>
+#include <errno.h>
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -7,16 +9,23 @@
 
 #include <getopt.h>
 
+#include "main.h"
 #include "util.h"
-#include "peer.h"
-#include "poll.h"
-#include "sock.h"
+
+/* Includes */
+#include "bc.h"
+#include "mc.h"
+#include "tcp.h"
+#include "web.h"
 
 /* Constants */
-#define BC_HOST   "255.255.255.255"
+#define MAX_WAIT   1000
+#define MAX_EVENTS 100
+
+/* Constants */
 #define BC_PORT   12345
 
-#define MC_HOST   "224.0.0.1"
+#define MC_GROUP  "224.0.0.1"
 #define MC_PORT   12345
 
 #define TCP_HOST  "0.0.0.0"
@@ -24,12 +33,6 @@
 
 #define WEB_HOST  "0.0.0.0"
 #define WEB_PORT  8080
-
-/* Configuration */
-#define USE_BC
-#undef  USE_MC
-#define USE_TCP
-#define USE_WEB
 
 /* Options */
 static struct option long_options[] = {
@@ -39,20 +42,72 @@ static struct option long_options[] = {
 	{NULL,      0, NULL,  0 },
 };
 
-/* Master sockets */
-static int master[NUM_TYPES];
+/* Local Data */
+static int     epoll;
+static struct  epoll_event events[MAX_EVENTS];
+static peer_t *head;
+static peer_t *tail;
+
+/* Interfaces */
+static bc_t    bc;
+static mc_t    mc;
+static tcp_t   tcp;
+static web_t   web;
+
+/* Socket functions */
+void poll_add(poll_t *data)
+{
+	struct epoll_event ctl = {
+		.events   = EPOLLIN,
+		.data.ptr = data,
+	};
+	if (epoll_ctl(epoll, EPOLL_CTL_ADD, data->sock, &ctl) < 0)
+		error("Error adding poll");
+}
+
+void poll_del(poll_t *data)
+{
+	if (epoll_ctl(epoll, EPOLL_CTL_DEL, data->sock, NULL) < 0)
+		error("Error deleting poll");
+}
+
+/* Peer functions */
+void peer_add(peer_t *peer)
+{
+	if (tail) {
+		tail->next = peer;
+		peer->prev = tail;
+		peer->next = NULL;
+		tail       = peer;
+	} else {
+		peer->prev = NULL;
+		peer->next = NULL;
+		head       = peer;
+		tail       = peer;
+	}
+}
+
+void peer_del(peer_t *peer)
+{
+	peer_t *next = peer->next;
+	peer_t *prev = peer->prev;
+	if (next) next->prev = prev;
+	if (prev) prev->next = next;
+	if (head == peer) head = next;
+	if (tail == peer) tail = prev;
+}
+
+void peer_send(peer_t *peer, void *buf, int len)
+{
+	for (peer_t *cur = head; cur; cur = cur->next)
+		if (cur != peer)
+			cur->send(cur->data, buf, len);
+}
 
 /* Helper functions */
 static void on_sigint(int signum)
 {
 	debug("\rShutting down");
-#ifdef USE_TCP
-	sock_close(master[TYP_TCP]);
-#endif
-#ifdef USE_WEB
-	sock_close(master[TYP_WEB]);
-#endif
-	peer_exit();
 	exit(0);
 }
 
@@ -87,85 +142,34 @@ static void parse(int argc, char **argv)
 	}
 }
 
-
 /* Main */
 int main(int argc, char **argv)
 {
-#if defined(USE_BC) || defined(USE_MC)
-	int fd, id;
-#endif
-
 	/* Setup main */
 	setbuf(stdout, NULL);
 	signal(SIGINT, on_sigint);
 	parse(argc, argv);
 
-	/* Setup polling and sockets */
-	peer_init();
-	poll_init();
+	if ((epoll = epoll_create(1)) < 0)
+		error("Error creating epoll");
 
 	/* Setup initial peers */
-#ifdef USE_BC
-	sock_bc(BC_HOST, BC_PORT, &fd);
-	id = peer_add(fd, TYP_UDP);
-	poll_add(fd, EVT_SLAVE, id);
-#endif
-#ifdef USE_MC
-	sock_mc(MC_HOST, MC_PORT, &fd);
-	id = peer_add(fd, TYP_UDP);
-	poll_add(fd, EVT_SLAVE, id);
-#endif
-#ifdef USE_TCP
-	sock_tcp(TCP_HOST, TCP_PORT, &master[TYP_TCP]);
-	poll_add(master[TYP_TCP], EVT_MASTER, TYP_TCP);
-#endif
-#ifdef USE_WEB
-	sock_tcp(WEB_HOST, WEB_PORT, &master[TYP_WEB]);
-	poll_add(master[TYP_WEB], EVT_MASTER, TYP_WEB);
-#endif
+	bc_client(&bc, BC_PORT);
+	mc_client(&mc, MC_GROUP, MC_PORT);
+	tcp_server(&tcp, TCP_HOST, TCP_PORT);
+	web_server(&web, WEB_HOST, WEB_PORT);
 
-	/* Listen for connections */
+	/* Run main loop */
 	while (1) {
-		char *buf;
-		int fd, id, data, cnt, len;
-		int ev = poll_wait(&data);
-
-		switch (ev) {
-			case EVT_TIMEOUT:
-				break;
-
-			case EVT_MASTER:
-				while ((fd = sock_accept(master[data])) >= 0) {
-					id = peer_add(fd, data);
-					if (id >= 0)
-						poll_add(fd, EVT_SLAVE, id);
-					else
-						sock_close(fd);
-				}
-				break;
-
-			case EVT_SLAVE:
-				id  = data;
-				cnt = peer_recv(id, &buf, &len);
-				if (cnt < 0) {
-					int fd = peer_del(id);
-					poll_del(fd);
-					sock_close(fd);
-					continue;
-				}
-				for (int ii = 0; ii < cnt; ii++) {
-					int to = peer_get(ii);
-					if (id == to)
-						continue;
-					if (peer_send(to, buf, len) < 0) {
-						int fd = peer_del(id);
-						poll_del(fd);
-						sock_close(fd);
-						cnt--;
-						ii--;
-					}
-				}
-				break;
+		errno = 0;
+		int count = epoll_wait(epoll, events, MAX_EVENTS, MAX_WAIT);
+		if (errno == EINTR)
+			continue;
+		if (count < 0)
+			error("Error waiting for event");
+		for (int i = 0; i < count; i++) {
+			poll_t *poll = events[i].data.ptr;
+			poll->ready(poll->data);
 		}
 	}
 

@@ -1,8 +1,15 @@
-#define _POSIX_SOURCE
 #define _GNU_SOURCE
 
-#include <sys/types.h>
-#include <sys/socket.h>
+#include <arpa/inet.h>
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+
+#include <stdlib.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 
 #ifdef USE_GNUTLS
 #include <gnutls/gnutls.h>
@@ -12,16 +19,13 @@
 #include <openssl/sha.h>
 #endif
 
-#include <unistd.h>
-
-#include <stdarg.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
-#include <strings.h>
-
+#include "main.h"
 #include "util.h"
-#include "peer.h"
+#include "web.h"
+
+/* Constants */
+#define SLAVES  100
+#define BACKLOG 1000
 
 /* Constants */
 #define MAX_METHOD  8
@@ -29,6 +33,7 @@
 #define MAX_VERSION 8
 #define MAX_FIELD   128
 #define MAX_VALUE   128
+#define MAX_DATA    1500
 
 /* Web Sockets Flags */
 #define WS_FINISH   0x80
@@ -43,15 +48,6 @@ enum {
 	WS_PING   = 0x09,
 	WS_PONG   = 0x0A,
 } opcode_t;
-
-/* Web Socket Types */
-struct {
-	uint8_t  finish;
-	uint8_t  opcode;
-	uint64_t length;
-	uint32_t masking;
-	uint8_t  data[];
-} mesg_t;
 
 /* HTTP state */
 typedef enum {
@@ -69,25 +65,29 @@ typedef enum {
 	MD_DATA,
 } md_t;
 
-struct web_t {
+/* Slave types */
+typedef struct slave_t {
+	int    used;
+	int    sock;
+	poll_t poll;
+	peer_t peer;
+
 	// Common stuff
-	int   cache;
-	int   sock;
-	int   mode;
-	int   idx;
+	int    mode;
+	int    idx;
 
 	// Http Request
-	char  req_method[MAX_METHOD+1];
-	char  req_path[MAX_PATH+1];
-	char  req_version[MAX_VERSION+1];
+	char   req_method[MAX_METHOD+1];
+	char   req_path[MAX_PATH+1];
+	char   req_version[MAX_VERSION+1];
 
 	// Http Headers
-	int   hdr_connect;
-	int   hdr_upgrade;
-	int   hdr_accept;
-	char  hdr_key[28];
-	char  hdr_field[MAX_FIELD+1];
-	char  hdr_value[MAX_VALUE+1];
+	int    hdr_connect;
+	int    hdr_upgrade;
+	int    hdr_accept;
+	char   hdr_key[28];
+	char   hdr_field[MAX_FIELD+1];
+	char   hdr_value[MAX_VALUE+1];
 
 	// WebSocket attributes
 	uint8_t  ws_finish;
@@ -95,7 +95,8 @@ struct web_t {
 	uint8_t  ws_masked;
 	uint8_t  ws_mask[4];
 	uint64_t ws_length;
-};
+	char     ws_data[MAX_DATA];
+} slave_t;
 
 /* Debug data */
 const char *str_mode[] = {
@@ -122,13 +123,14 @@ const char *str_opcode[0xF] = {
 	[10] "pong  ",
 };
 
-/* Local data */
-static web_t   peers[WEB_PEERS];
-static idx_t   cache[WEB_PEERS];
-static alloc_t alloc;
+/* Local Data */
+static slave_t slaves[SLAVES];
+
+/* Forward functions */
+static void web_drop(void *_slave);
 
 /* Web helper functions */
-static void web_mode(web_t *web, int mode, char *buf)
+static void web_mode(slave_t *web, int mode, char *buf)
 {
 	buf[web->idx] = '\0';
 	web->idx      = 0;
@@ -148,13 +150,13 @@ static int web_printf(int sock, const char *fmt, ...)
 }
 
 /* Web parser functions */
-static void web_open(web_t *web, const char *method,
+static void web_open(slave_t *web, const char *method,
 		const char *path, const char *version)
 {
 	trace("  web_open:  %s [%s] [%s]", method, path, version);
 }
 
-static void web_head(web_t *web, const char *field, const char *value)
+static void web_head(slave_t *web, const char *field, const char *value)
 {
 	static char hash[20] = {};
 	static char extra[]  = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -186,7 +188,7 @@ static void web_head(web_t *web, const char *field, const char *value)
 	}
 }
 
-static int web_body(web_t *web)
+static int web_body(slave_t *web)
 {
 	trace("  web_body:  path=%s", web->req_path);
 	if (!strcmp(web->req_path, "/")) {
@@ -245,48 +247,189 @@ static int web_body(web_t *web)
 	return -1;
 }
 
-/* Web functions */
-void web_init(void)
+static void web_parse(slave_t *web, char ch)
 {
-	alloc_init(&alloc, cache, WEB_PEERS);
-}
+	int mode = 0;
 
-web_t *web_add(int sock)
-{
-	web_t *web = alloc_get_ptr(&alloc, peers);
-	if (web) {
-		web->sock        = sock;
-		web->mode        = 0;
-		web->idx         = 0;
-
-		web->hdr_connect = 0;
-		web->hdr_upgrade = 0;
-		web->hdr_accept  = 0;
-
-		web->ws_finish   = 0;
-		web->ws_opcode   = 0;
-		web->ws_masked   = 0;
-		web->ws_length   = 0;
+	if (web->mode < MD_BODY) {
+		if (ch == '\r')
+			return;
+		if (ch == ' ' && web->idx == 0)
+			return;
 	}
-	return web;
+
+	switch (web->mode) {
+		/* HTTP Parsing */
+		case MD_METHOD:
+			if (ch == ' ')
+				web_mode(web, MD_PATH, web->req_method);
+			else if (web->idx < MAX_METHOD)
+				web->req_method[web->idx++] = ch;
+			break;
+
+		case MD_PATH:
+			if (ch == ' ')
+				web_mode(web, MD_VERSION, web->req_path);
+			else if (web->idx < MAX_PATH)
+				web->req_path[web->idx++] = ch;
+			break;
+
+		case MD_VERSION:
+			if (ch == '\n') {
+				web_mode(web, MD_FIELD, web->req_version);
+				web_open(web, web->req_method,
+					      web->req_path,
+					      web->req_version);
+			}
+			else if (web->idx < MAX_VERSION)
+				web->req_version[web->idx++] = ch;
+			break;
+
+		case MD_FIELD:
+			if (ch == '\n') {
+				if ((mode = web_body(web)) >= 0)
+					web_mode(web, mode, web->hdr_field);
+			} else if (ch == ':')
+				web_mode(web, MD_VALUE, web->hdr_field);
+			else if (web->idx < MAX_FIELD)
+				web->hdr_field[web->idx++] = ch;
+			break;
+
+		case MD_VALUE:
+			if (ch == '\n') {
+				web_mode(web, MD_FIELD, web->hdr_value);
+				web_head(web, web->hdr_field, web->hdr_value);
+			} else if (web->idx < MAX_VALUE)
+				web->hdr_value[web->idx++] = ch;
+			break;
+
+		case MD_BODY:
+			trace("  web_parse: body");
+			break;
+
+		/* Web Socket Parsing */
+		case MD_OPCODE:
+			trace("    web_parse: opcode - fin=%d, op=%s",
+					(ch&0x80) !=  0,
+					str_opcode[ch&0x0F] ?: "[opcode error]");
+
+			web->ws_finish = (ch&0x80)!=0;
+			web->ws_opcode = (ch&0x0F);
+			web->mode      = MD_LENGTH;
+			break;
+
+		case MD_LENGTH:
+			trace("    web_parse: length - masked=%d, length=%d",
+					(ch&0x80) != 0,
+					(ch&0x7F));
+
+			web->ws_length = (ch&0x7F);
+			web->ws_masked = (ch&0x80)!=0;
+
+
+			if (web->ws_length == 126) {
+				web->ws_length = 0;
+				web->idx       = 2;
+				web->mode      = MD_EXTEND;
+			}
+			else if (web->ws_length == 127) {
+				web->ws_length = 0;
+				web->idx       = 8;
+				web->mode      = MD_EXTEND;
+			}
+			else if (web->ws_masked) {
+				web->mode      = MD_MASKED;
+			}
+			else {
+				web->mode      = MD_DATA;
+			}
+			break;
+
+		case MD_EXTEND:
+			trace("    web_parse: extend - %d=%02hhx", web->idx, ch);
+
+			web->idx       -= 1;
+			web->ws_length |= ((uint64_t)ch) << (web->idx*8);
+
+			if (web->idx == 0) {
+				if (web->ws_masked)
+					web->mode = MD_MASKED;
+				else
+					web->mode = MD_DATA;
+			}
+			break;
+
+		case MD_MASKED:
+			trace("    web_parse: masked - %d=%02hhx", web->idx, ch);
+
+			web->ws_mask[web->idx++] = ch;
+			if (web->idx >= 4) {
+				web->idx  = 0;
+				web->mode = MD_DATA;
+			}
+			break;
+
+		case MD_DATA:
+			if (web->idx < MAX_DATA) {
+				uint8_t mask = web->ws_mask[web->idx%4];
+				web->ws_data[web->idx] = ch ^ mask;
+			}
+			web->idx++;
+			if (web->idx < web->ws_length)
+				return;
+
+			trace("    web_parse: data   - '%.*s'",
+					web->ws_length, web->ws_data);
+			web->idx  = 0;
+			web->mode = MD_OPCODE;
+
+			switch (web->ws_opcode) {
+				case WS_TEXT:
+				case WS_BINARY:
+					peer_send(&web->peer, web->ws_data, web->ws_length);
+					break;
+				case WS_CLOSE:
+					web_drop(web);
+					break;
+			}
+	}
 }
 
-void web_del(web_t *web)
+/* Local functions */
+static void web_drop(void *_slave)
 {
-	alloc_del_ptr(&alloc, peers, web);
+	slave_t *slave = _slave;
+	poll_del(&slave->poll);
+	shutdown(slave->sock, SHUT_RDWR);
+	close(slave->sock);
+	slave->used = 0;
 }
 
-int web_send(web_t *web, char *buf, int len)
+static void web_recv(void *_slave)
 {
-	int     bytes    = 0;
-	uint8_t head[10] = { WS_FINISH|WS_TEXT };
+	static char buf[1500];
+
+	slave_t *slave = _slave;
+	int len = recv(slave->sock, buf, sizeof(buf), 0);
+	if (len <= 0) {
+		debug("web_recv   - fail=%d", len);
+		web_drop(slave);
+	} else {
+		debug("web_recv   - recv=%d", len);
+		for (int i = 0; i < len; i++)
+			web_parse(slave, buf[i]);
+	}
+}
+
+static void web_send(void *_slave, void *buf, int len)
+{
+	slave_t *slave    = _slave;
+	int      bytes    = 0;
+	uint8_t  head[10] = { WS_FINISH|WS_TEXT };
 
 	uint8_t  *flag  = (uint8_t *)&head[1];
 	uint16_t *ext16 = (uint16_t*)&head[2];
 	uint64_t *ext64 = (uint64_t*)&head[2];
-
-	if (web->mode < MD_OPCODE)
-		return 0;
 
 	if (len < 126) {
 		bytes  = 2;
@@ -303,159 +446,98 @@ int web_send(web_t *web, char *buf, int len)
 		*ext64 = net64(len);
 	}
 
-	if (write(web->sock, head, bytes) < 1)
-		return -1;
-	if (write(web->sock, buf, len) < 1)
-		return -1;
-	return 0;
+	if (write(slave->sock, head, bytes) != bytes) {
+		web_drop(slave);
+		return;
+	}
+	if (write(slave->sock, buf, len) != len) {
+		web_drop(slave);
+		return;
+	}
 }
 
-int web_parse(web_t *web, char **buf, int *len)
+static void web_accept(void *_web)
 {
-	trace("  web_parse: %s", str_mode[web->mode]);
+	web_t *web = _web;
+	int sock, flags;
+	struct sockaddr_in addr = {};
+	socklen_t length = sizeof(addr);
 
-	int mode = 0, status = 0;
-	for (int i = 0; i < *len; i++) {
-		uint8_t ch = (*buf)[i];
+	if ((sock = accept(web->sock, (struct sockaddr*)&addr, &length)) < 0)
+		error("Error accepting peer");
 
-		if (web->mode < MD_BODY) {
-			if (ch == '\r')
-				continue;
-			if (ch == ' ' && web->idx == 0)
-				continue;
-		}
+	if ((flags = fcntl(sock, F_GETFL, 0)) < 0)
+		error("Error getting slave flags");
 
-		switch (web->mode) {
-			/* HTTP Parsing */
-			case MD_METHOD:
-				if (ch == ' ')
-					web_mode(web, MD_PATH, web->req_method);
-				else if (web->idx < MAX_METHOD)
-					web->req_method[web->idx++] = ch;
-				break;
+	if (fcntl(sock, F_SETFL, flags|O_NONBLOCK) < 0)
+		error("Error setting slave non-blocking");
 
-			case MD_PATH:
-				if (ch == ' ')
-					web_mode(web, MD_VERSION, web->req_path);
-				else if (web->idx < MAX_PATH)
-					web->req_path[web->idx++] = ch;
-				break;
+	/* Find a free client */
+	slave_t *slave = 0;
+	for (int i = 0; !slave && i < SLAVES; i++)
+		if (!slaves[i].used)
+			slave = &slaves[i];
+	if (!slave)
+		return;
 
-			case MD_VERSION:
-				if (ch == '\n') {
-					web_mode(web, MD_FIELD, web->req_version);
-					web_open(web, web->req_method,
-					              web->req_path,
-					              web->req_version);
-				}
-				else if (web->idx < MAX_VERSION)
-					web->req_version[web->idx++] = ch;
-				break;
+	/* Setup client */
+	slave->used       = 1;
+	slave->sock       = sock;
 
-			case MD_FIELD:
-				if (ch == '\n') {
-					if ((mode = web_body(web)) >= 0)
-						web_mode(web, mode, web->hdr_field);
-				} else if (ch == ':')
-					web_mode(web, MD_VALUE, web->hdr_field);
-				else if (web->idx < MAX_FIELD)
-					web->hdr_field[web->idx++] = ch;
-				break;
+	slave->peer.send  = web_send;
+	slave->peer.data  = slave;
 
-			case MD_VALUE:
-				if (ch == '\n') {
-					web_mode(web, MD_FIELD, web->hdr_value);
-					web_head(web, web->hdr_field, web->hdr_value);
-				} else if (web->idx < MAX_VALUE)
-					web->hdr_value[web->idx++] = ch;
-				break;
+	slave->poll.ready = web_recv;
+	slave->poll.data  = slave;
+	slave->poll.sock  = sock;
 
-			case MD_BODY:
-				trace("  web_parse: body");
-				break;
+	peer_add(&slave->peer);
+	poll_add(&slave->poll);
+}
 
-			/* Web Socket Parsing */
-			case MD_OPCODE:
-				trace("    web_parse: opcode - fin=%d, op=%s",
-						(ch&0x80) !=  0,
-						str_opcode[ch&0x0F] ?: "[opcode error]");
+/* Broadcast Functions */
+void web_server(web_t *web, const char *host, int port)
+{
+	int sock, flags, value = 1;
+	struct sockaddr_in addr = {};
 
-				web->ws_finish = (ch&0x80)!=0;
-				web->ws_opcode = (ch&0x0F);
-				web->mode      = MD_LENGTH;
-				break;
+	/* Setup address */
+	addr.sin_family = AF_INET;
+	addr.sin_port   = htons(port);
+	inet_pton(AF_INET, host, &addr.sin_addr.s_addr);
 
-			case MD_LENGTH:
-				trace("    web_parse: length - masked=%d, length=%d",
-						(ch&0x80) != 0,
-						(ch&0x7F));
+	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+		error("Error opening web socket");
 
-				web->ws_length = (ch&0x7F);
-				web->ws_masked = (ch&0x80)!=0;
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
+			(char*)&value, sizeof(value)) < 0)
+		error("Error setting web socket reuseaddr");
 
+	if ((flags = fcntl(sock, F_GETFL, 0)) < 0)
+		error("Error getting web socket flags");
 
-				if (web->ws_length == 126) {
-					web->ws_length = 0;
-					web->idx       = 2;
-					web->mode      = MD_EXTEND;
-				}
-				else if (web->ws_length == 127) {
-					web->ws_length = 0;
-					web->idx       = 8;
-					web->mode      = MD_EXTEND;
-				}
-				else if (web->ws_masked) {
-					web->mode      = MD_MASKED;
-				}
-				else {
-					web->mode      = MD_DATA;
-				}
-				break;
+	if (fcntl(sock, F_SETFL, flags|O_NONBLOCK) < 0)
+		error("Error setting web socket non-blocking");
 
-			case MD_EXTEND:
-				trace("    web_parse: extend - %d=%02hhx", web->idx, ch);
+	if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+		error("Error binding web socket");
 
-				web->idx       -= 1;
-				web->ws_length |= ((uint64_t)ch) << (web->idx*8);
+	if (listen(sock, BACKLOG) < 0)
+		error("Error listening on web socket");
 
-				if (web->idx == 0) {
-					if (web->ws_masked)
-						web->mode = MD_MASKED;
-					else
-						web->mode = MD_DATA;
-				}
-				break;
+	/* Setup client */
+	web->sock      = sock;
 
-			case MD_MASKED:
-				trace("    web_parse: masked - %d=%02hhx", web->idx, ch);
+	web->poll.ready = web_accept;
+	web->poll.data  = web;
+	web->poll.sock  = sock;
 
-				web->ws_mask[web->idx++] = ch;
-				if (web->idx >= 4) {
-					web->idx  = 0;
-					web->mode = MD_DATA;
-				}
-				break;
+	poll_add(&web->poll);
+}
 
-			case MD_DATA:
-				*buf = &(*buf)[i];
-				*len = (*len)-i;
-
-				for (int i = 0; i < *len; i++)
-					(*buf)[i] ^= web->ws_mask[i%4];
-
-				web->idx  = 0;
-				web->mode = MD_OPCODE;
-
-				if (*len != web->ws_length) {
-					trace("    web_parse: data   - [length error: got %d]",
-							*len);
-					return 0;
-				} else {
-					trace("    web_parse: data   - '%.*s'",
-							*len, *buf);
-					return 1;
-				}
-		}
-	}
-	return status;
+void web_close(web_t *web)
+{
+	poll_del(&web->poll);
+	shutdown(web->sock, SHUT_RDWR);
+	close(web->sock);
 }

@@ -4,15 +4,15 @@ PROG     ?= thesis
 GCC      ?= gcc
 CFLAGS   ?= -g -Wall -Werror --std=c99
 
-CPPFLAGS += -DUSE_OPENSSL
-LDFLAGS  += -lcrypto
+web.o:   CPPFLAGS += -DUSE_OPENSSL
+$(PROG): LDFLAGS  += -lcrypto
 
 all: $(PROG)
 
 clean:
 	rm -f $(PROG) *.o
 
-$(PROG): main.o util.o peer.o poll.o sock.o udp.o tcp.o web.o
+$(PROG): main.o util.o bc.o mc.o tcp.o web.o
 	$(GCC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 %.o: %.c $(wildcard *.h) makefile
