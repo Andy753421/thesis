@@ -4,396 +4,36 @@
 
 #include <fcntl.h>
 #include <unistd.h>
-#include <errno.h>
-
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-
-#ifdef USE_GNUTLS
-#include <gnutls/gnutls.h>
-#include <gnutls/crypto.h>
-#endif
-#ifdef USE_OPENSSL
-#include <openssl/sha.h>
-#endif
 
 #include "main.h"
 #include "util.h"
+#include "http.h"
+#include "ws.h"
 #include "web.h"
 
 /* Constants */
 #define SLAVES  100
 #define BACKLOG 1000
 
-/* Constants */
-#define MAX_METHOD  8
-#define MAX_PATH    256
-#define MAX_VERSION 8
-#define MAX_FIELD   128
-#define MAX_VALUE   128
-#define MAX_DATA    1500
-
-/* Web Sockets Flags */
-#define WS_FINISH   0x80
-#define WS_MASK     0x80
-
-/* Web Socket Opcodes */
+/* Slave types */
 enum {
-	WS_MORE   = 0x00,
-	WS_TEXT   = 0x01,
-	WS_BINARY = 0x02,
-	WS_CLOSE  = 0x08,
-	WS_PING   = 0x09,
-	WS_PONG   = 0x0A,
-} opcode_t;
-
-/* HTTP state */
-typedef enum {
-	MD_METHOD,
-	MD_PATH,
-	MD_VERSION,
-	MD_FIELD,
-	MD_VALUE,
-	MD_BODY,
-
-	MD_OPCODE,
-	MD_LENGTH,
-	MD_EXTEND,
-	MD_MASKED,
-	MD_DATA,
-} md_t;
+	WEB_NONE,
+	WEB_HTTP,
+	WEB_SOCK,
+};
 
 /* Slave types */
 typedef struct slave_t {
-	int    used;
+	int    mode;
 	int    sock;
 	poll_t poll;
 	peer_t peer;
-
-	// Common stuff
-	int    mode;
-	int    idx;
-
-	// Http Request
-	char   req_method[MAX_METHOD+1];
-	char   req_path[MAX_PATH+1];
-	char   req_version[MAX_VERSION+1];
-
-	// Http Headers
-	int    hdr_connect;
-	int    hdr_upgrade;
-	int    hdr_accept;
-	char   hdr_key[28];
-	char   hdr_field[MAX_FIELD+1];
-	char   hdr_value[MAX_VALUE+1];
-
-	// WebSocket attributes
-	uint8_t  ws_finish;
-	uint8_t  ws_opcode;
-	uint8_t  ws_masked;
-	uint8_t  ws_mask[4];
-	uint64_t ws_length;
-	char     ws_data[MAX_DATA];
+	http_t http;
+	ws_t   ws;
 } slave_t;
-
-/* Debug data */
-const char *str_mode[] = {
-	[MD_METHOD]  "METHOD",
-	[MD_PATH]    "PATH",
-	[MD_VERSION] "VERSION",
-	[MD_FIELD]   "FIELD",
-	[MD_VALUE]   "VALUE",
-	[MD_BODY]    "BODY",
-
-	[MD_OPCODE]  "OPCODE",
-	[MD_LENGTH]  "LENGTH",
-	[MD_EXTEND]  "EXTEND",
-	[MD_MASKED]  "MASKED",
-	[MD_DATA]    "DATA",
-};
-
-const char *str_opcode[0xF] = {
-	[ 0] "more  ",
-	[ 1] "text  ",
-	[ 2] "binary",
-	[ 8] "close ",
-	[ 9] "ping  ",
-	[10] "pong  ",
-};
 
 /* Local Data */
 static slave_t slaves[SLAVES];
-
-/* Forward functions */
-static void web_drop(void *_slave);
-
-/* Web helper functions */
-static void web_mode(slave_t *web, int mode, char *buf)
-{
-	buf[web->idx] = '\0';
-	web->idx      = 0;
-	web->mode     = mode;
-}
-
-
-static int web_printf(int sock, const char *fmt, ...)
-{
-	static char buf[512];
-
-	va_list ap;
-	va_start(ap, fmt);
-	int len = vsnprintf(buf, sizeof(buf), fmt, ap);
-	va_end(ap);
-	return send(sock, buf, len, MSG_DONTWAIT);
-}
-
-/* Web parser functions */
-static void web_open(slave_t *web, const char *method,
-		const char *path, const char *version)
-{
-	trace("  web_open:  %s [%s] [%s]", method, path, version);
-}
-
-static void web_head(slave_t *web, const char *field, const char *value)
-{
-	static char hash[20] = {};
-	static char extra[]  = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-	trace("    web_head: %-20s -> [%s]", field, value);
-	if (!strcasecmp(field, "Upgrade")) {
-		web->hdr_upgrade = !!strcasestr(value, "websocket");
-	}
-	else if (!strcasecmp(field, "Connection")) {
-		web->hdr_connect = !!strcasestr(value, "upgrade");
-	}
-	else if (!strcasecmp(field, "Sec-WebSocket-Key")) {
-#ifdef USE_GNUTLS
-		gnutls_hash_hd_t sha1;
-		gnutls_hash_init(&sha1, GNUTLS_DIG_SHA1);
-		gnutls_hash(sha1, value, strlen(value));
-		gnutls_hash(sha1, extra, strlen(extra));
-		gnutls_hash_output(sha1, hash);
-#endif
-#ifdef USE_OPENSSL
-		SHA_CTX sha1;
-		SHA1_Init(&sha1);
-		SHA1_Update(&sha1, value, strlen(value));
-		SHA1_Update(&sha1, extra, strlen(extra));
-		SHA1_Final((unsigned char*)hash, &sha1);
-#endif
-		web->hdr_accept = base64(hash, sizeof(hash),
-			web->hdr_key, sizeof(web->hdr_key));
-	}
-}
-
-static int web_body(slave_t *web)
-{
-	trace("  web_body:  path=%s", web->req_path);
-	if (!strcmp(web->req_path, "/")) {
-		web_printf(web->sock,
-			"HTTP/1.1 200 OK\r\n"
-			"Content-Type: text/html; charset=UTF-8\r\n"
-			"\r\n"
-			"<html>\r\n"
-			"<body>\r\n"
-			"<h1>Hello, World</h1>\r\n"
-			"</body>\r\n"
-			"</html>\r\n"
-		);
-	}
-	else if (!strcmp(web->req_path, "/socket")) {
-		trace("  web_body:  socket - connect=%d upgrade=%d accept=%d\n"
-		      "            key=%s",
-		      web->hdr_connect, web->hdr_upgrade, web->hdr_accept, web->hdr_key);
-
-		if (web->hdr_connect && web->hdr_upgrade && web->hdr_accept) {
-			web_printf(web->sock,
-				"HTTP/1.1 101 WebSocket Protocol Handshake\r\n"
-				"Connection: Upgrade\r\n"
-				"Upgrade: WebSocket\r\n"
-				"Sec-WebSocket-Accept: %.*s\r\n"
-				"\r\n",
-				web->hdr_accept, web->hdr_key
-			);
-			return MD_OPCODE;
-		}
-		else {
-			web_printf(web->sock,
-				"HTTP/1.1 400 Bad Request\r\n"
-				"Content-Type: text/html; charset=UTF-8\r\n"
-				"\r\n"
-				"<html>\r\n"
-				"<body>\r\n"
-				"<h1>Bad Request!</h1>\r\n"
-				"</body>\r\n"
-				"</html>\r\n"
-			);
-		}
-	}
-	else {
-		web_printf(web->sock,
-			"HTTP/1.1 404 Not Found\r\n"
-			"Content-Type: text/html; charset=UTF-8\r\n"
-			"\r\n"
-			"<html>\r\n"
-			"<body>\r\n"
-			"<h1>Not Found!</h1>\r\n"
-			"</body>\r\n"
-			"</html>\r\n"
-		);
-	}
-	return -1;
-}
-
-static void web_parse(slave_t *web, char ch)
-{
-	int mode = 0;
-
-	if (web->mode < MD_BODY) {
-		if (ch == '\r')
-			return;
-		if (ch == ' ' && web->idx == 0)
-			return;
-	}
-
-	switch (web->mode) {
-		/* HTTP Parsing */
-		case MD_METHOD:
-			if (ch == ' ')
-				web_mode(web, MD_PATH, web->req_method);
-			else if (web->idx < MAX_METHOD)
-				web->req_method[web->idx++] = ch;
-			break;
-
-		case MD_PATH:
-			if (ch == ' ')
-				web_mode(web, MD_VERSION, web->req_path);
-			else if (web->idx < MAX_PATH)
-				web->req_path[web->idx++] = ch;
-			break;
-
-		case MD_VERSION:
-			if (ch == '\n') {
-				web_mode(web, MD_FIELD, web->req_version);
-				web_open(web, web->req_method,
-					      web->req_path,
-					      web->req_version);
-			}
-			else if (web->idx < MAX_VERSION)
-				web->req_version[web->idx++] = ch;
-			break;
-
-		case MD_FIELD:
-			if (ch == '\n') {
-				if ((mode = web_body(web)) >= 0)
-					web_mode(web, mode, web->hdr_field);
-			} else if (ch == ':')
-				web_mode(web, MD_VALUE, web->hdr_field);
-			else if (web->idx < MAX_FIELD)
-				web->hdr_field[web->idx++] = ch;
-			break;
-
-		case MD_VALUE:
-			if (ch == '\n') {
-				web_mode(web, MD_FIELD, web->hdr_value);
-				web_head(web, web->hdr_field, web->hdr_value);
-			} else if (web->idx < MAX_VALUE)
-				web->hdr_value[web->idx++] = ch;
-			break;
-
-		case MD_BODY:
-			trace("  web_parse: body");
-			break;
-
-		/* Web Socket Parsing */
-		case MD_OPCODE:
-			trace("    web_parse: opcode - fin=%d, op=%s",
-					(ch&0x80) !=  0,
-					str_opcode[ch&0x0F] ?: "[opcode error]");
-
-			web->ws_finish = (ch&0x80)!=0;
-			web->ws_opcode = (ch&0x0F);
-			web->mode      = MD_LENGTH;
-			break;
-
-		case MD_LENGTH:
-			trace("    web_parse: length - masked=%d, length=%d",
-					(ch&0x80) != 0,
-					(ch&0x7F));
-
-			web->ws_length = (ch&0x7F);
-			web->ws_masked = (ch&0x80)!=0;
-
-
-			if (web->ws_length == 126) {
-				web->ws_length = 0;
-				web->idx       = 2;
-				web->mode      = MD_EXTEND;
-			}
-			else if (web->ws_length == 127) {
-				web->ws_length = 0;
-				web->idx       = 8;
-				web->mode      = MD_EXTEND;
-			}
-			else if (web->ws_masked) {
-				web->mode      = MD_MASKED;
-			}
-			else {
-				web->mode      = MD_DATA;
-			}
-			break;
-
-		case MD_EXTEND:
-			trace("    web_parse: extend - %d=%02hhx", web->idx, ch);
-
-			web->idx       -= 1;
-			web->ws_length |= ((uint64_t)ch) << (web->idx*8);
-
-			if (web->idx == 0) {
-				if (web->ws_masked)
-					web->mode = MD_MASKED;
-				else
-					web->mode = MD_DATA;
-			}
-			break;
-
-		case MD_MASKED:
-			trace("    web_parse: masked - %d=%02hhx", web->idx, ch);
-
-			web->ws_mask[web->idx++] = ch;
-			if (web->idx >= 4) {
-				web->idx  = 0;
-				web->mode = MD_DATA;
-			}
-			break;
-
-		case MD_DATA:
-			if (web->idx < MAX_DATA) {
-				uint8_t mask = web->ws_mask[web->idx%4];
-				web->ws_data[web->idx] = ch ^ mask;
-			}
-			web->idx++;
-			if (web->idx < web->ws_length)
-				return;
-
-			trace("    web_parse: data   - '%.*s'",
-					web->ws_length, web->ws_data);
-			web->idx  = 0;
-			web->mode = MD_OPCODE;
-
-			switch (web->ws_opcode) {
-				case WS_TEXT:
-				case WS_BINARY:
-					peer_send(&web->peer, web->ws_data, web->ws_length);
-					break;
-				case WS_CLOSE:
-					web_drop(web);
-					break;
-			}
-	}
-}
 
 /* Local functions */
 static void web_drop(void *_slave)
@@ -402,7 +42,7 @@ static void web_drop(void *_slave)
 	poll_del(&slave->poll);
 	shutdown(slave->sock, SHUT_RDWR);
 	close(slave->sock);
-	slave->used = 0;
+	slave->mode = 0;
 }
 
 static void web_recv(void *_slave)
@@ -416,43 +56,40 @@ static void web_recv(void *_slave)
 		web_drop(slave);
 	} else {
 		debug("web_recv   - recv=%d", len);
-		for (int i = 0; i < len; i++)
-			web_parse(slave, buf[i]);
+		for (int i = 0; i < len; i++) {
+			switch (slave->mode) {
+				case WEB_HTTP:
+					switch (http_parse(&slave->http, buf[i])) {
+						case HTTP_DONE:
+							web_drop(slave);
+							return;
+						case HTTP_SOCK:
+							slave->mode = WEB_SOCK;
+							break;
+					}
+					break;
+				case WEB_SOCK:
+					switch (ws_parse(&slave->ws, buf[i], &slave->peer)) {
+						case WS_DONE:
+							web_drop(slave);
+							return;
+					}
+					break;
+			}
+		}
 	}
 }
 
 static void web_send(void *_slave, void *buf, int len)
 {
-	slave_t *slave    = _slave;
-	int      bytes    = 0;
-	uint8_t  head[10] = { WS_FINISH|WS_TEXT };
-
-	uint8_t  *flag  = (uint8_t *)&head[1];
-	uint16_t *ext16 = (uint16_t*)&head[2];
-	uint64_t *ext64 = (uint64_t*)&head[2];
-
-	if (len < 126) {
-		bytes  = 2;
-		*flag  = len;
-	}
-	else if (len < 0x10000) {
-		bytes  = 4;
-		*flag  = 126;
-		*ext16 = net16(len);
-	}
-	else {
-		bytes  = 10;
-		*flag  = 127;
-		*ext64 = net64(len);
-	}
-
-	if (write(slave->sock, head, bytes) != bytes) {
-		web_drop(slave);
-		return;
-	}
-	if (write(slave->sock, buf, len) != len) {
-		web_drop(slave);
-		return;
+	slave_t *slave = _slave;
+	if (slave->mode == WEB_SOCK) {
+		int slen = ws_send(&slave->ws, buf, len);
+		if (slen != len) {
+			debug("  web_send - fail=%d!=%d", slen, len);
+		} else {
+			debug("  web_send - sent=%d", len);
+		}
 	}
 }
 
@@ -475,13 +112,13 @@ static void web_accept(void *_web)
 	/* Find a free client */
 	slave_t *slave = 0;
 	for (int i = 0; !slave && i < SLAVES; i++)
-		if (!slaves[i].used)
+		if (!slaves[i].mode)
 			slave = &slaves[i];
 	if (!slave)
 		return;
 
 	/* Setup client */
-	slave->used       = 1;
+	slave->mode       = WEB_HTTP;
 	slave->sock       = sock;
 
 	slave->peer.send  = web_send;
@@ -490,6 +127,14 @@ static void web_accept(void *_web)
 	slave->poll.ready = web_recv;
 	slave->poll.data  = slave;
 	slave->poll.sock  = sock;
+
+	slave->http.sock  = sock;
+	slave->http.mode  = 0;
+	slave->http.idx   = 0;
+
+	slave->ws.sock    = sock;
+	slave->ws.mode    = 0;
+	slave->ws.idx     = 0;
 
 	peer_add(&slave->peer);
 	poll_add(&slave->poll);
