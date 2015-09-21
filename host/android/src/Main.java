@@ -1,5 +1,10 @@
 package org.pileus.thesis;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
@@ -14,9 +19,12 @@ import android.widget.Toast;
 public class Main extends Activity
 {
 	/* Private data */
-	private WebView webview;
-	private Socket  socket;
-	private Toast   toast;
+	private WebView      webview;
+	private Socket       socket;
+	private Toast        toast;
+	private Timer        timer;
+	private TimerTask    task;
+	private List<Driver> drivers;
 
 	/* Debug Helpers */
 	public static void debug(String msg)
@@ -32,7 +40,14 @@ public class Main extends Activity
 		this.toast.setText(msg);
 		this.toast.show();
 	}
-	public void eval(String code)
+
+	/* Driver functions */
+	public void discover() {
+		for (Driver drv : this.drivers)
+			drv.discover();
+	}
+
+	public void receive(String code)
 	{
 		final String url = "javascript: android_callback(\"" +
 			code
@@ -44,6 +59,16 @@ public class Main extends Activity
 				Main.this.webview.loadUrl(url);
 		        }
 		});
+	}
+
+	public void broadcast(String msg) {
+		Main.debug("broadcast: " + msg);
+		this.socket.broadcast(msg);
+	}
+
+	public void load(Driver drv) {
+		drv.init(this);
+		this.drivers.add(drv);
 	}
 
 	/* Activity Methods */
@@ -58,8 +83,12 @@ public class Main extends Activity
 			PreferenceManager.setDefaultValues(this, R.xml.prefs, false);
 
 			// Create Helpers
-			this.socket  = new Socket(this);
-			this.webview = new WebView(this);
+			this.socket    = new Socket(this);
+			this.webview   = new WebView(this);
+			this.drivers   = new ArrayList<Driver>();
+
+			// Load drivers
+			this.load(new DataStore());
 
 			// Setup Web View
 			this.webview.setWebChromeClient(this.socket);
@@ -92,6 +121,20 @@ public class Main extends Activity
 	{
 		super.onResume();
 		Main.debug("Main: onResume");
+
+		/* Start timer */
+		Log.d("Control", "Starting timer");
+		this.task = new TimerTask() {
+			public void run() {
+				Main.this.runOnUiThread(new Runnable() {
+					public void run() {
+						Main.this.discover();
+					}
+				});
+			}
+		};
+		this.timer = new Timer();
+		this.timer.scheduleAtFixedRate(this.task, 0, 1000/1);
 	}
 
 	@Override
@@ -99,6 +142,11 @@ public class Main extends Activity
 	{
 		super.onPause();
 		Main.debug("Main: onPause");
+
+		/* Stop timer */
+		this.timer.cancel();
+		this.timer = null;
+		this.task  = null;
 	}
 
 	@Override

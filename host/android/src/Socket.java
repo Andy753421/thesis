@@ -85,7 +85,7 @@ public class Socket extends WebChromeClient implements Runnable
 			CharBuffer cbuf = decoder.decode(bbuf);
 			String     text = cbuf.toString();
 			//Main.debug("Socket: run - got packet '" + text + "'");
-			this.main.eval(text);
+			this.main.receive(text);
 		} catch (Exception e) {
 			Main.debug("Socket: run - error", e);
 		}
