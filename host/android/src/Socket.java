@@ -11,12 +11,8 @@ import java.nio.charset.CharsetEncoder;
 
 import android.content.Context;
 import android.os.AsyncTask;
-import android.webkit.ConsoleMessage;
-import android.webkit.JavascriptInterface;
-import android.webkit.WebChromeClient;
-import android.webkit.WebView;
 
-public class Socket extends WebChromeClient implements Runnable
+public class Socket extends Driver implements Runnable
 {
 	// UDP Data
 	private final SocketAddress SEND_ADDR =
@@ -56,19 +52,6 @@ public class Socket extends WebChromeClient implements Runnable
 		}
 	}
 
-	// WebChromeClient
-	public boolean onConsoleMessage(ConsoleMessage cm) {
-		int    max = 50;
-		String msg = cm.message();
-		if (msg.length() > max)
-			msg = msg.substring(0,max);
-		//Main.debug("Socket: onConsoleMessage - "
-		//	+ cm.sourceId() + ":"
-		//	+ cm.lineNumber());
-		Main.debug("Socket: onConsoleMessage - " + msg);
-		return true;
-	}
-
 	// Thread interface
 	@Override
 	public void run() {
@@ -84,30 +67,33 @@ public class Socket extends WebChromeClient implements Runnable
 			bbuf.flip();
 			CharBuffer cbuf = decoder.decode(bbuf);
 			String     text = cbuf.toString();
+			Message    msg  = new Message.Wrap().init(text);
 			//Main.debug("Socket: run - got packet '" + text + "'");
-			this.main.receive(text);
+			this.main.broadcast(this, msg);
 		} catch (Exception e) {
 			Main.debug("Socket: run - error", e);
 		}
 	}
 
-	// Javscript Interface
-	@JavascriptInterface
-	public void broadcast(String mesg) {
+	public void discover() {
+	}
+
+	public void receive(Message msg) {
 		//Main.debug("Socket: broadcast");
 
 		// Check arguments
 		if (this.send == null)
 			return;
-		if (mesg == null)
+		if (msg == null)
 			return;
 
 		// Broadcast in background
-		new AsyncTask<String, Void, Void>() {
-			protected Void doInBackground(String... args) {
+		new AsyncTask<Message, Void, Void>() {
+			protected Void doInBackground(Message... args) {
 				try {
-					String     text = args[0];
-					CharBuffer cbuf = CharBuffer.wrap(text);
+					Message    msg  = args[0];
+					String     txt  = msg.write();
+					CharBuffer cbuf = CharBuffer.wrap(txt);
 					ByteBuffer bbuf = encoder.encode(cbuf);
 					Socket.this.send.send(bbuf, SEND_ADDR);
 					//Main.debug("Socket: broadcast - -> "
@@ -117,6 +103,6 @@ public class Socket extends WebChromeClient implements Runnable
 				}
 				return null;
 			}
-		}.execute(mesg);
+		}.execute(msg);
 	}
 }

@@ -1,12 +1,21 @@
 package org.pileus.thesis;
 
-import org.json.JSONStringer;
-
 import java.util.HashMap;
 import java.util.LinkedList;
 
 public abstract class Message {
 	public abstract String write();
+
+	public static class Wrap extends Message {
+		private String string;
+		public Wrap init(String string) {
+			this.string = string;
+			return this;
+		}
+		public String write() {
+			return string;
+		}
+	}
 
 	public static class Hash extends Message {
 		private HashMap<String,Message> data

@@ -6,14 +6,17 @@ abstract class Driver {
 	public Main   main;
 	public String uuid;
 
-	public void init(Main main) {
+	public Driver() {
 		this.uuid = UUID.randomUUID().toString();    
-		this.main = main;                         
+	}
 
+	public Driver(Main main) {
+		super();
+		this.main = main;                         
 	}
 
 	public void broadcast(Message m) {
-		this.main.broadcast(m.write());
+		this.main.broadcast(this, m);
 	}
 
 	public abstract void receive(Message m);

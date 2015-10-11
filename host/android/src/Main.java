@@ -13,14 +13,11 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.webkit.WebView;
 import android.widget.Toast;
 
 public class Main extends Activity
 {
 	/* Private data */
-	private WebView      webview;
-	private Socket       socket;
 	private Toast        toast;
 	private Timer        timer;
 	private TimerTask    task;
@@ -42,34 +39,27 @@ public class Main extends Activity
 	}
 
 	/* Driver functions */
-	public void discover() {
+	private void load(Driver drv) {
+		this.drivers.add(drv);
+	}
+
+	private void discover() {
+		Main.debug("Main: discover");
 		for (Driver drv : this.drivers)
 			drv.discover();
 	}
 
-	public void receive(String code)
-	{
-		final String url = "javascript: android_callback(\"" +
-			code
-			.replaceAll("\\\\", "\\\\\\\\")
-			.replaceAll("\"",   "\\\\\"")
-		+ "\")";
-		this.runOnUiThread(new Runnable() {
-			public void run() {
-				Main.this.webview.loadUrl(url);
-		        }
-		});
+	public void broadcast(Driver src, Message msg) {
+		Main.debug("Main: broadcast - " + msg);
+		Main.debug("      <-------- - " + src);
+		for (Driver dst : this.drivers) {
+			if (dst != src) {
+				Main.debug("      --------> - " + dst);
+				dst.receive(msg);
+			}
+		}
 	}
 
-	public void broadcast(String msg) {
-		Main.debug("broadcast: " + msg);
-		this.socket.broadcast(msg);
-	}
-
-	public void load(Driver drv) {
-		drv.init(this);
-		this.drivers.add(drv);
-	}
 
 	/* Activity Methods */
 	@Override
@@ -83,24 +73,13 @@ public class Main extends Activity
 			PreferenceManager.setDefaultValues(this, R.xml.prefs, false);
 
 			// Create Helpers
-			this.socket    = new Socket(this);
-			this.webview   = new WebView(this);
-			this.drivers   = new ArrayList<Driver>();
+			this.toast   = Toast.makeText(this, "", Toast.LENGTH_SHORT);
+			this.drivers = new ArrayList<Driver>();
 
 			// Load drivers
-			this.load(new DataStore());
-
-			// Setup Web View
-			this.webview.setWebChromeClient(this.socket);
-			this.webview.addJavascriptInterface(this.socket, "android");
-			this.webview.getSettings().setJavaScriptEnabled(true);
-			this.webview.loadUrl("file:///android_asset/index.htm");
-
-			// Add window
-			this.setContentView(this.webview);
-
-			// Setup toast
-			this.toast     = Toast.makeText(this, "", Toast.LENGTH_SHORT);
+			this.load(new Socket(this));
+			this.load(new DataStore(this));
+			this.load(new WebHost(this));
 
 		} catch (Exception e) {
 			Main.debug("Main: onCreate - error setting content view", e);
