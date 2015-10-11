@@ -43,7 +43,6 @@ class WebHost extends Driver {
 		+ "\")";
 		JsRunner run = new JsRunner(this.webview, call);
 		this.main.runOnUiThread(run);
-				
 	}
 
 	// Post class
