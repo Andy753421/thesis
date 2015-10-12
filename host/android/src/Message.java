@@ -3,135 +3,200 @@ package org.pileus.thesis;
 import java.util.HashMap;
 import java.util.LinkedList;
 
-public abstract class Message {
-	public abstract String write();
+import org.json.JSONArray; 
+import org.json.JSONException; 
+import org.json.JSONObject; 
 
-	public Message get(String k) throws Err { throw new Err(); }
-	public String  str(String k) throws Err { throw new Err(); }
-	public int     num(String k) throws Err { throw new Err(); }
+public class Message {
+	public String     string;
+	public JSONObject object;
+	public JSONArray  array;
 
-	public Message get(int    i) throws Err { throw new Err(); }
-	public String  str(int    i) throws Err { throw new Err(); }
-	public int     num(int    i) throws Err { throw new Err(); }
-
-	public static class Err extends Throwable {
+	/* Helper functions */
+	protected void parseObject() throws Err, JSONException {
+		if (this.object != null)
+			return;
+		if (this.string == null)
+			throw new Err();
+		this.object = new JSONObject(this.string);
+	}
+	protected void parseArray() throws Err, JSONException {
+		if (this.array != null)
+			return;
+		if (this.string == null)
+			throw new Err();
+		this.array = new JSONArray(this.string);
+	}
+	protected Message toMessage(Object o) throws Err {
+		if (o instanceof Message)
+			return (Message)o;
+		if (o instanceof JSONObject) {
+			Message m = new Message();
+			m.object = (JSONObject)o;
+			return m;
+		}
+		if (o instanceof JSONArray) {
+			Message m = new Message();
+			m.array = (JSONArray)o;
+			return m;
+		}
+		throw new Err();
+	}
+	protected Object toObject(Message m) {
+		if (m.object != null)
+			return (Object)m.object;
+		if (m.array != null)
+			return (Object)m.array;
+		return null;
 	}
 
-	public static class Wrap extends Message {
-		private String string;
-		public Wrap init(String string) {
-			this.string = string;
-			return this;
+	/* Hash Index */
+	public Message no(String k) throws Err {
+		try {
+			this.parseObject();
+			if (this.object.has(k))
+				throw new Err();
+		} catch (JSONException e) {
+			throw new Err();
 		}
-		public String write() {
-			return string;
+		return this;
+	}
+	public Message get(String k) throws Err {
+		try {
+			this.parseObject();
+			return this.toMessage(this.object.get(k));
+		} catch (JSONException e) {
+			throw new Err();
+		}
+	}
+	public String str(String k) throws Err {
+		try {
+			this.parseObject();
+			return this.object.getString(k);
+		} catch (JSONException e) {
+			throw new Err();
+		}
+	}
+	public double num(String k) throws Err {
+		try {
+			this.parseObject();
+			return this.object.getDouble(k);
+		} catch (JSONException e) {
+			throw new Err();
 		}
 	}
 
+	/* List Index */
+	public Message no(int i) throws Err {
+		try {
+			this.parseArray();
+			if (this.object.length() > i)
+				throw new Err();
+		} catch (JSONException e) {
+			throw new Err();
+		}
+		return this;
+	}
+	public Message get(int i) throws Err {
+		try {
+			this.parseArray();
+			return this.toMessage(this.array.get(i));
+		} catch (JSONException e) {
+			throw new Err();
+		}
+	}
+	public String str(int i) throws Err {
+		try {
+			this.parseArray();
+			return this.array.getString(i);
+		} catch (JSONException e) {
+			throw new Err();
+		}
+	}
+	public double num(int i) throws Err {
+		try {
+			this.parseArray();
+			return this.array.getDouble(i);
+		} catch (JSONException e) {
+			throw new Err();
+		}
+	}
+
+	/* Setters */
 	public static class Hash extends Message {
-		private HashMap<String,Message> data
-			= new HashMap<String,Message>();
-
-		/* Setters */
+		public Hash() {
+			this.object = new JSONObject();
+		}
 		public Hash set(String k, Message v) {
-			this.data.put(k, v);
+			try {
+				this.object.put(k, this.toObject(v));
+			} catch (JSONException e) {}
 			return this;
 		}
 		public Hash set(String k, int v) {
-			return this.set(k, new Num(v));
-		}
-		public Hash set(String k, double v) {
-			return this.set(k, new Num(v));
-		}
-		public Hash set(String k, String v) {
-			return this.set(k, new Str(v));
-		}
-
-		/* Getters */
-		public Message get(String k) throws Err {
-			if (data.containsKey(k)) {
-				return this.get(k);
-			} else {
-				throw new Err();
-			}
-		}
-		public String str(String k) throws Err {
-			Message m = this.get(k);
-			if (m instanceof Str)
-				return ((Str)m).str();
-			else
-				throw new Err(); 
-		}
-		public int num(String i) throws Err {
-			Message m = this.get(k);
-			if (m instanceof Num)
-				return ((Int)m).num();
-			else
-				throw new Err(); 
-		}
-
-		/* Write */
-		public String write() {
-			String str = null;
-			for (String k : this.data.keySet()) {
-				String v = this.data.get(k).write();
-				String s = "\"" + k + "\"" + ":" + v;
-				str = (str==null) ? s : str+','+s;
-			}
-			return "{" + str + "}";
-		}
-	}
-
-	public static class List extends Message {
-		private LinkedList<Message> data =
-			new LinkedList<Message>();
-
-		/* Setters */
-		public List add(Message m) {
-			this.data.add(m);
+			try {
+				this.object.put(k, v);
+			} catch (JSONException e) {}
 			return this;
 		}
-
-		/* Getters */
-		public Message get(String k) throws Err {
-			if (data.containsKey(k)) {
-				return this.get(k);
-			} else {
-				throw new Err();
-			}
+		public Hash set(String k, double v) {
+			try {
+				this.object.put(k, v);
+			} catch (JSONException e) {}
+			return this;
 		}
-
-		/* Write */
-		public String write() {
-			String str = null;
-			for (Message m : this.data) {
-				String s = m.write();
-				str = (str==null) ? s : str+','+s;
-			}
-			return "[" + str + "]";
+		public Hash set(String k, String v) {
+			try {
+				this.object.put(k, v);
+			} catch (JSONException e) {}
+			return this;
 		}
 	}
 
-	private static class Num extends Message {
-		private double data = 0;
-		public Num(int n) {
-			this.data = n;
+	/* Setters */
+	public static class List extends Message {
+		public List() {
+			this.array = new JSONArray();
 		}
-		public Num(double n) {
-			this.data = n;
+		public List add(Message v) {
+			this.array.put(this.toObject(v));
+			return this;
 		}
-		public String write() {
-			return Double.toString(this.data);
+		public List add(int v) {
+			this.array.put(v);
+			return this;
+		}
+		public List add(double v) {
+			try {
+				this.array.put(v);
+			} catch (JSONException e) {}
+			return this;
+		}
+		public List add(String v) {
+			this.array.put(v);
+			return this;
 		}
 	}
 
-	private static class Str extends Message {
-		private String data = "";
-		public Str(String s) {
-			this.data = s;
+	/* Setters */
+	public static class Wrap extends Message {
+		public Wrap(String s) {
+			this.string = s;
 		}
-		public String write() {
-			return "\"" + this.data + "\"";
-		}
+	}
+
+	/* Write functions */
+	public String write() {
+		if (this.string != null)
+			return this.string;
+		if (this.object != null)
+			return this.string = this.object.toString();
+		if (this.array != null)
+			return this.string = this.array.toString();
+		return this.string = "";
+	}
+
+	/* Exceptions */
+	public static class Err extends Throwable {
 	}
 }

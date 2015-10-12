@@ -67,7 +67,7 @@ public class Socket extends Driver implements Runnable
 			bbuf.flip();
 			CharBuffer cbuf = decoder.decode(bbuf);
 			String     text = cbuf.toString();
-			Message    msg  = new Message.Wrap().init(text);
+			Message    msg  = new Message.Wrap(text);
 			//Main.debug("Socket: run - got packet '" + text + "'");
 			this.main.broadcast(this, msg);
 		} catch (Exception e) {

@@ -36,7 +36,7 @@ class DataStore extends Driver {
 	public void receive(Message msg) {
 		// Read command
 		try {
-			Message read = msg.get("write");
+			Message read = msg.get("read").no("data");
 			String  name = read.str("name");
 			try {
 				Main.debug("Read");
