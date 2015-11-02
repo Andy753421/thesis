@@ -15,8 +15,9 @@ function guid()
 // Android interface
 function android_callback(text)
 {
-	console.log("android_callback: " + text);
 	var obj = JSON.parse(text);
+	if (!obj.capabilities)
+		console.log("android_callback: " + text);
 	for (var key in sock_clients)
 		if (sock_clients[key].receive)
 			sock_clients[key].receive(obj);

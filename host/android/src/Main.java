@@ -44,18 +44,25 @@ public class Main extends Activity
 	}
 
 	private void discover() {
-		Main.debug("Main: discover");
+		//Main.debug("Main: discover");
 		for (Driver drv : this.drivers)
 			drv.discover();
 	}
 
 	public void broadcast(Driver src, Message msg) {
-		Main.debug("Main: broadcast - " + msg);
-		Main.debug("      <-------- - " + src);
-		for (Driver dst : this.drivers) {
-			if (dst != src) {
-				Main.debug("      --------> - " + dst);
-				dst.receive(msg);
+		try {
+			msg.get("capabilities");
+			for (Driver dst : this.drivers)
+				if (dst != src)
+					dst.receive(msg);
+		} catch (Message.Err ex) {
+			Main.debug("Main: broadcast - " + msg);
+			Main.debug("      <-------- - " + src);
+			for (Driver dst : this.drivers) {
+				if (dst != src) {
+					Main.debug("      --------> - " + dst);
+					dst.receive(msg);
+				}
 			}
 		}
 	}
