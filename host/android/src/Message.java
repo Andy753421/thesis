@@ -61,6 +61,14 @@ public class Message {
 		}
 		return this;
 	}
+	public Object obj(String k) throws Err {
+		try {
+			this.parseObject();
+			return this.object.get(k);
+		} catch (JSONException e) {
+			throw new Err();
+		}
+	}
 	public Message get(String k) throws Err {
 		try {
 			this.parseObject();
@@ -96,6 +104,14 @@ public class Message {
 			throw new Err();
 		}
 		return this;
+	}
+	public Object obj(int i) throws Err {
+		try {
+			this.parseArray();
+			return this.array.get(i);
+		} catch (JSONException e) {
+			throw new Err();
+		}
 	}
 	public Message get(int i) throws Err {
 		try {
