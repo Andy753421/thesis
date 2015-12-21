@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -64,7 +65,7 @@ static void tcp_send(void *_slave, void *buf, int len)
 static void tcp_accept(void *_tcp)
 {
 	tcp_t *tcp = _tcp;
-	int sock, flags;
+	int sock, flags, yes = 1, idle = 240;
 	struct sockaddr_in addr = {};
 	socklen_t length = sizeof(addr);
 
@@ -76,6 +77,18 @@ static void tcp_accept(void *_tcp)
 
 	if (fcntl(sock, F_SETFL, flags|O_NONBLOCK) < 0)
 		error("Error setting slave non-blocking");
+
+	if (setsockopt(sock, SOL_TCP, TCP_KEEPIDLE, &idle, sizeof(int)))
+		error("Error setting slave keep idle");
+
+	if (setsockopt(sock, SOL_TCP, TCP_KEEPCNT, &yes, sizeof(int)))
+		error("Error setting slave keep count");
+
+	if (setsockopt(sock, SOL_TCP, TCP_KEEPINTVL, &yes, sizeof(int)))
+		error("Error setting slave keep interval");
+
+	if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(int)))
+		error("Error setting slave keep alive");
 
 	/* Find a free client */
 	slave_t *slave = 0;
