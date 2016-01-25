@@ -1,0 +1,46 @@
+webhost
+-------
+
+pointer
+-------
+
+datastore
+---------
+capabilities:
+  direction: input, output
+  filename:  foo.txt
+  mimetype:  ''
+  class:     info, list, read, write
+
+info:
+  name: ...
+  size: ...
+  free: ...
+  used: ...
+
+list:
+  name: '/'
+  data: ['/foo/',
+         '/bar/']
+
+read:
+  name: '/foo/bar.txt'
+
+read:
+  name:  '/foo/bar.txt'
+  data:  <binary>
+
+read:
+  name:  '/foo/bar.txt'
+  error: 'Some error'
+
+write:
+  name:  '/foo/bar.txt'
+  data:  <binary>
+
+write:
+  name:  '/foo/bar.txt'
+
+write:
+  name:  '/foo/bar.txt'
+  error: 'Some error'

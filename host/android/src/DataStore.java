@@ -1,5 +1,6 @@
 package org.pileus.thesis;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -10,9 +11,15 @@ class DataStore extends Driver {
 
 	private String client = "";
 	private String device = "";
+	private String prefix = ".";
 
 	public DataStore(Main main) {
 		super(main);
+	}
+
+	public DataStore(Main main, String preifx) {
+		super(main);
+		this.prefix = prefix;
 	}
 
 	public void discover() {
@@ -35,6 +42,30 @@ class DataStore extends Driver {
 
 	public @interface Test {
 		public boolean enabled() default true;
+	}
+
+	@Receive({"list.name:str", "!list.data"})
+	public void onList(String name) {
+		//try {
+			Main.debug("DataStore: onList - " + name);
+			Message.List lst = new Message.List();
+			File dir = new File(this.prefix+'/'+name);
+			for (File ent : dir.listFiles()) {
+				if (ent.isDirectory())
+					lst.add(name + ent.getName() + "/");
+				else
+					lst.add(name + ent.getName());
+			}
+			this.broadcast(new Message.Hash()
+				.set("list", new Message.Hash()
+					.set("name", name)
+					.set("data", lst)));
+		//} catch (IOException e) {
+		//	this.broadcast(new Message.Hash()
+		//		.set("list", new Message.Hash()
+		//			.set("name",  name)
+		//			.set("error", "fail")));
+		//}
 	}
 
 	@Receive({"read.name:str", "!read.data"})
