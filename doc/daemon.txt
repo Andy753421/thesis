@@ -1,0 +1,74 @@
+init()
+	bc_client(&bc, 12345)
+		sock = socket(12345)
+		peer_add(data=bc, func=bc_send)
+		poll_add(data=bc, func=bc_recv, sock)
+
+	mc_client(&bc, 12345)
+		sock = socket(udp, 12345)
+		peer_add(mc, mc_send)
+		poll_add(mc, bc_recv, sock)
+
+	tcp_server(&tcp, 12345)
+		sock = socket(tcp, 12345)
+		poll_add(tcp, tcp_accept, sock)
+
+	web_server(&web, 8080)
+		sock = socket(tcp, 8080)
+		poll_add(web, web_accept, sock)
+
+recv()
+	bc_recv()
+		recvfrom(sock, &msg)
+		peer_send(peer, &msg)
+
+	mc_recv()
+		recvfrom(sock,&msg)
+		peer_send(peer, &msg)
+
+	tcp_accept()
+		slave = alloc()
+		sock  = accept(master)
+		peer_add(slave, tcp_send)
+		poll_add(slave, tcp_recv, sock)
+
+	web_accept()
+		slave = alloc()
+		sock  = accept(master)
+		peer_add(slave, web_send)
+		poll_add(slave, web_recv, sock)
+
+	tcp_recv()
+		recv(sock, &msg)
+		peer_send(peer, &msg)
+
+	web_recv()
+		recv(sock, &msg)
+		switch (mode)
+			http_parse(chr)
+				mode = ws
+			ws_parse(chr)
+				peer_send()
+
+send()
+	bc_send()
+		sendto()
+	tcp_send()
+		send()
+	web_send()
+		send() if ws
+	...
+
+exit()
+	bc_close(&bc)
+		peer_del(&bc->peer)
+		poll_del(&bc->poll)
+		shutodwn(&bc->sock)
+		close(&bc->sock)
+
+	tcp_server(&tcp, 12345)
+		poll_del(&bc->poll)
+		shutodwn(&bc->sock)
+		close(&bc->sock)
+
+	...

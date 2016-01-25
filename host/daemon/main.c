@@ -54,7 +54,7 @@ static mc_t    mc;
 static tcp_t   tcp;
 static web_t   web;
 
-/* Socket functions */
+/* Poll functions */
 void poll_add(poll_t *data)
 {
 	struct epoll_event ctl = {
